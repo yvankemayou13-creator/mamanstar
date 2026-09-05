@@ -1,0 +1,17 @@
+project_id = "erp-pgi"
+
+[functions.create-user]
+verify_jwt = true
+entrypoint = "./functions/create-user/index.ts"
+
+[functions.reset-admin-password]
+verify_jwt = false
+entrypoint = "./functions/reset-admin-password/index.ts"
+
+[functions.manage-user]
+verify_jwt = true
+entrypoint = "./functions/manage-user/index.ts"
+
+[functions.login-username]
+verify_jwt = false
+entrypoint = "./functions/login-username/index.ts"
