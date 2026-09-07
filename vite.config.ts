@@ -5,10 +5,5 @@ export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
     exclude: ['@electric-sql/pglite']
-  },
-  build: {
-    rollupOptions: {
-      external: []
-    }
   }
 })
