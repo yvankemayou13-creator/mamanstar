@@ -1,4 +1,4 @@
-export const SCHEMA_SQL = `
+ const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS profiles (
   id TEXT PRIMARY KEY,
   email TEXT,
@@ -146,4 +146,4 @@ CREATE TABLE IF NOT EXISTS secret_codes (
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (now()::text)
 );
-`
+module.exports = { SCHEMA_SQL };
