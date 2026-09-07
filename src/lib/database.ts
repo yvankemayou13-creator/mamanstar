@@ -1,5 +1,6 @@
 import { PGlite } from '@electric-sql/pglite'
-import { IdbFs } from '@electric-sql/pglite/fs'
+// @ts-ignore
+import { IdbFs } from '@electric-sql/pglite'
 // ---------- Shared DB interface ----------
 export interface DbResult {
   rows: unknown[]
