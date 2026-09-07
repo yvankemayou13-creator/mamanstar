@@ -1,5 +1,5 @@
 import { PGlite } from '@electric-sql/pglite'
-
+import { IdbFs } from '@electric-sql/pglite'
 // ---------- Shared DB interface ----------
 export interface DbResult {
   rows: unknown[]
@@ -212,7 +212,7 @@ export async function getDb(): Promise<DbClient> {
       client = new ElectronDbClient()
     } else {
       // Browser: PGlite in IndexedDB
-      const pglite = new PGlite('idb://erp-pgi')
+      const pglite = new PGlite({ fs: new IdbFs('erp-pgi'), dataDir: 'idb://erp-pgi' })
       await pglite.exec(SCHEMA_SQL)
       client = new BrowserDbClient(pglite)
       await seedDefaults(client)
