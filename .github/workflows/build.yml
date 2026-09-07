@@ -12,8 +12,8 @@ jobs:
         with:
           node-version: 20
       - run: npm install
-      - run: npm run electron:dist
-      - name: Publier le .exe
-        uses: softprops/action-gh-release@v1
-        with:
-          files: release/*.exe
+      - name: Build and Publish
+        run: npm run electron:dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
