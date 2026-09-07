@@ -146,4 +146,6 @@ CREATE TABLE IF NOT EXISTS secret_codes (
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (now()::text)
 );
+';
+
 module.exports = { SCHEMA_SQL };
