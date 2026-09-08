@@ -55,15 +55,14 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
-  },
+    },
     "linux": {
       "target": "AppImage",
-      "icon": "electron/icon.png"
+      "icon": "build/icon.png"
     },
     "mac": {
       "target": "dmg",
-      "icon": "electron/icon.png"
+      "icon": "build/icon.png"
     }
   }
 }
