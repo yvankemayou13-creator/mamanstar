@@ -5,6 +5,7 @@ import { getDb } from '../lib/database'
 import {
   Building2, Lock, User, KeyRound, CheckCircle2,
   ArrowLeft, ShoppingCart, BookOpen, Shield,
+  Eye, EyeOff,
 } from 'lucide-react'
 import type { UserRole } from '../types'
 
@@ -58,7 +59,9 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState<Mode>('signin')
-
+  const [showPassword, setShowPassword] = useState(false)
+  const [showAdminPassword, setShowAdminPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
   // Reset state
   const [resetUsername, setResetUsername] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
@@ -70,10 +73,8 @@ export default function Login() {
     e.preventDefault()
     setError(null)
     setLoading(true)
-
     const { error } = await signIn(username, password, selectedRole || undefined)
     if (error) setError(error)
-
     setLoading(false)
   }
 
@@ -81,13 +82,11 @@ export default function Login() {
     e.preventDefault()
     setError(null)
     setLoading(true)
-
     if (newPassword.length < 6) {
       setError('Le nouveau mot de passe doit contenir au moins 6 caractères')
       setLoading(false)
       return
     }
-
     try {
       const valid = await verifySecretCode('reset_password', adminPassword)
       if (!valid) {
@@ -147,7 +146,6 @@ export default function Login() {
             <>
               <h2 className="text-lg font-semibold text-gray-900 text-center mb-2">Choisissez votre profil</h2>
               <p className="text-sm text-gray-500 text-center mb-6">Sélectionnez le type d'utilisateur pour vous connecter</p>
-
               <div className="space-y-3">
                 {roleOptions.map(option => (
                   <button
@@ -167,7 +165,6 @@ export default function Login() {
             </>
           ) : (
             <>
-              {/* Role header */}
               <div className="flex items-center gap-3 mb-6 p-4 rounded-xl bg-gray-50 border border-gray-100">
                 <div className={`w-10 h-10 rounded-lg ${selectedOption?.bgColor} ${selectedOption?.color} flex items-center justify-center flex-shrink-0`}>
                   {selectedOption && <selectedOption.icon className="w-5 h-5" />}
@@ -175,11 +172,7 @@ export default function Login() {
                 <div className="flex-1">
                   <p className={`text-sm font-semibold ${selectedOption?.color}`}>{selectedOption?.label}</p>
                 </div>
-                <button
-                  onClick={goBackToRoles}
-                  className="p-2 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-all"
-                  title="Retour"
-                >
+                <button onClick={goBackToRoles} className="p-2 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-all" title="Retour">
                   <ArrowLeft className="w-4 h-4" />
                 </button>
               </div>
@@ -191,15 +184,7 @@ export default function Login() {
                       <label className="label">Nom d'utilisateur</label>
                       <div className="relative">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                        <input
-                          type="text"
-                          value={username}
-                          onChange={(e) => setUsername(e.target.value)}
-                          className="input pl-10"
-                          placeholder="votre nom d'utilisateur"
-                          required
-                          autoFocus
-                        />
+                        <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="input pl-10" placeholder="votre nom d'utilisateur" required autoFocus />
                       </div>
                     </div>
 
@@ -208,43 +193,30 @@ export default function Login() {
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                         <input
-                          type="password"
+                          type={showPassword ? "text" : "password"}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="input pl-10"
+                          className="input pl-10 pr-10"
                           placeholder="••••••••"
                           required
                         />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
                       </div>
                     </div>
 
-                    {error && (
-                      <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">
-                        {error}
-                      </div>
-                    )}
+                    {error && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{error}</div>}
 
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="btn-primary w-full"
-                    >
-                      {loading ? (
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      ) : (
-                        <><Lock className="w-4 h-4" /> Se connecter</>
-                      )}
+                    <button type="submit" disabled={loading} className="btn-primary w-full">
+                      {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Lock className="w-4 h-4" /> Se connecter</>}
                     </button>
                   </form>
 
                   {selectedRole === 'admin' && (
                     <div className="mt-4 pt-4 border-t border-gray-100">
-                      <button
-                        onClick={() => { setMode('reset-admin'); setError(null); setResetUsername(''); setAdminPassword(''); setNewPassword('') }}
-                        className="flex items-center justify-center gap-2 w-full text-sm text-primary-600 hover:text-primary-700 font-medium transition-all"
-                      >
-                        <KeyRound className="w-4 h-4" />
-                        Réinitialiser le mot de passe
+                      <button onClick={() => { setMode('reset-admin'); setError(null); setResetUsername(''); setAdminPassword(''); setNewPassword('') }} className="flex items-center justify-center gap-2 w-full text-sm text-primary-600 hover:text-primary-700 font-medium transition-all">
+                        <KeyRound className="w-4 h-4" /> Réinitialiser le mot de passe
                       </button>
                     </div>
                   )}
@@ -254,108 +226,59 @@ export default function Login() {
               {mode === 'reset-admin' && (
                 <>
                   <div className="text-center mb-6">
-                    <div className="inline-flex items-center justify-center w-12 h-12 bg-primary-100 rounded-xl mb-3">
-                      <KeyRound className="w-6 h-6 text-primary-600" />
-                    </div>
+                    <div className="inline-flex items-center justify-center w-12 h-12 bg-primary-100 rounded-xl mb-3"><KeyRound className="w-6 h-6 text-primary-600" /></div>
                     <h2 className="text-lg font-semibold text-gray-900">Réinitialisation</h2>
                     <p className="text-sm text-gray-500 mt-1">Saisissez le mot de passe administrateur pour réinitialiser.</p>
                   </div>
-
                   <form onSubmit={handleResetAdmin} className="space-y-4">
                     <div>
                       <label className="label">Nom d'utilisateur administrateur</label>
                       <div className="relative">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                        <input
-                          type="text"
-                          value={resetUsername}
-                          onChange={(e) => setResetUsername(e.target.value)}
-                          className="input pl-10"
-                          placeholder="admin"
-                          required
-                          autoFocus
-                        />
+                        <input type="text" value={resetUsername} onChange={(e) => setResetUsername(e.target.value)} className="input pl-10" placeholder="admin" required autoFocus />
                       </div>
                     </div>
-
                     <div>
                       <label className="label">Mot de passe administrateur</label>
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                        <input
-                          type="password"
-                          value={adminPassword}
-                          onChange={(e) => setAdminPassword(e.target.value)}
-                          className="input pl-10"
-                          placeholder="••••••••"
-                          required
-                        />
+                        <input type={showAdminPassword ? "text" : "password"} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} className="input pl-10 pr-10" placeholder="••••••••" required />
+                        <button type="button" onClick={() => setShowAdminPassword(!showAdminPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          {showAdminPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
                       </div>
                     </div>
-
                     <div>
                       <label className="label">Nouveau mot de passe</label>
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                        <input
-                          type="password"
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          className="input pl-10"
-                          placeholder="••••••••"
-                          required
-                        />
+                        <input type={showNewPassword ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="input pl-10 pr-10" placeholder="••••••••" required />
+                        <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
                       </div>
                       <p className="text-xs text-gray-400 mt-1">Minimum 6 caractères</p>
                     </div>
-
-                    {error && (
-                      <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">
-                        {error}
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="btn-primary w-full"
-                    >
-                      {loading ? (
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      ) : (
-                        <><Lock className="w-4 h-4" /> Réinitialiser</>
-                      )}
+                    {error && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{error}</div>}
+                    <button type="submit" disabled={loading} className="btn-primary w-full">
+                      {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Lock className="w-4 h-4" /> Réinitialiser</>}
                     </button>
                   </form>
-
-                  <button
-                    onClick={goBackToSignIn}
-                    className="flex items-center justify-center gap-2 w-full text-sm text-gray-500 hover:text-gray-700 font-medium mt-4"
-                  >
-                    <ArrowLeft className="w-4 h-4" /> Retour à la connexion
-                  </button>
+                  <button onClick={goBackToSignIn} className="flex items-center justify-center gap-2 w-full text-sm text-gray-500 hover:text-gray-700 font-medium mt-4"><ArrowLeft className="w-4 h-4" /> Retour à la connexion</button>
                 </>
               )}
 
               {mode === 'reset-success' && (
                 <div className="text-center py-6">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-accent-100 rounded-2xl mb-4">
-                    <CheckCircle2 className="w-8 h-8 text-accent-600" />
-                  </div>
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-accent-100 rounded-2xl mb-4"><CheckCircle2 className="w-8 h-8 text-accent-600" /></div>
                   <h2 className="text-xl font-bold text-gray-900 mb-2">Mot de passe réinitialisé</h2>
-                  <p className="text-sm text-gray-500 mb-6">Votre mot de passe a été modifié avec succès. Vous pouvez maintenant vous connecter.</p>
-                  <button onClick={goBackToSignIn} className="btn-primary w-full">
-                    <Lock className="w-4 h-4" /> Se connecter
-                  </button>
+                  <p className="text-sm text-gray-500 mb-6">Votre mot de passe a été modifié avec succès.</p>
+                  <button onClick={goBackToSignIn} className="btn-primary w-full"><Lock className="w-4 h-4" /> Se connecter</button>
                 </div>
               )}
             </>
           )}
         </div>
-
-        <p className="text-center text-gray-500 text-sm mt-6">
-          Gestion du Stock, Ventes, Facturation & Comptabilité
-        </p>
       </div>
     </div>
   )
