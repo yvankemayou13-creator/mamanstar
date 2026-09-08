@@ -10,6 +10,7 @@ import {
   Plus, X, FileText, Eye, Trash2, Printer,
   Wallet, Receipt, CreditCard,
   ClipboardCheck, Lock, AlertTriangle, CalendarCheck, Pencil,
+  EyeOff,
 } from 'lucide-react'
 import type { Invoice, Product, InvoiceLine, DailyClosure, CompanySettings } from '../types'
 
@@ -47,6 +48,7 @@ export default function SalesInvoices() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null)
   const [adminPassword, setAdminPassword] = useState('')
+  const [showAdminPassword, setShowAdminPassword] = useState(false)
   const [deleteJustification, setDeleteJustification] = useState('')
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -58,10 +60,7 @@ export default function SalesInvoices() {
   const load = useCallback(async () => {
     setLoading(true)
     const [invRes, prodRes, closRes, settingsRes] = await Promise.all([
-      getInvoices(),
-      getProducts(),
-      getDailyClosures(),
-      getCompanySettings(),
+      getInvoices(), getProducts(), getDailyClosures(), getCompanySettings(),
     ])
     setInvoices(invRes.data || [])
     setProducts(prodRes.data || [])
@@ -73,24 +72,24 @@ export default function SalesInvoices() {
   useEffect(() => { load() }, [load])
 
   const addLine = () => {
-    setForm({ ...form, lines: [...form.lines, { product_id: '', designation: '', quantity: 1, unit_price: 0 }] })
+    setForm({...form, lines: [...form.lines, { product_id: '', designation: '', quantity: 1, unit_price: 0 }] })
   }
 
   const updateLine = (index: number, field: string, value: string) => {
     const lines = [...form.lines]
     if (field === 'product_id') {
       const product = products.find(p => p.id === value)
-      lines[index] = { ...lines[index], product_id: value, designation: product?.designation || '', unit_price: product?.sale_price || 0 }
+      lines[index] = {...lines[index], product_id: value, designation: product?.designation || '', unit_price: product?.sale_price || 0 }
     } else if (field === 'quantity') {
-      lines[index].quantity = parseInt(value) || 1
+      lines[index].quantity = parseFloat(value) || 0.5
     } else if (field === 'unit_price') {
       lines[index].unit_price = parseFloat(value) || 0
     }
-    setForm({ ...form, lines })
+    setForm({...form, lines })
   }
 
   const removeLine = (index: number) => {
-    setForm({ ...form, lines: form.lines.filter((_, i) => i !== index) })
+    setForm({...form, lines: form.lines.filter((_, i) => i!== index) })
   }
 
   const totalAmount = form.lines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0)
@@ -106,37 +105,24 @@ export default function SalesInvoices() {
     setError(null)
     if (form.lines.length === 0) { setError('Ajoutez au moins une ligne'); return }
     setSaving(true)
-
     const { data: counterVal } = await incrementInvoiceCounter()
     const invCounter = counterVal || 1
     const invoiceNumber = `FAC-${new Date().getFullYear()}-${String(invCounter).padStart(5, '0')}`
-
     const { data: invoiceData, error: invError } = await insertInvoice({
       invoice_number: invoiceNumber,
       user_id: profile?.id || null,
-      total_ht: totalAmount,
-      tva_rate: 0,
-      tva_amount: 0,
-      total_ttc: totalAmount,
-      payment_status: form.payment_status,
-      payment_method: form.payment_method,
+      total_ht: totalAmount, tva_rate: 0, tva_amount: 0, total_ttc: totalAmount,
+      payment_status: form.payment_status, payment_method: form.payment_method,
       lines: form.lines.map(l => ({
-        product_id: l.product_id || null,
-        designation: l.designation,
-        quantity: l.quantity,
-        unit_price: l.unit_price,
-        line_total: l.quantity * l.unit_price,
+        product_id: l.product_id || null, designation: l.designation,
+        quantity: l.quantity, unit_price: l.unit_price, line_total: l.quantity * l.unit_price,
       })),
     })
-
     if (invError) { setError(invError.message); setSaving(false); return }
-
     setShowModal(false)
-
     if (!invoiceData) { setSaving(false); return }
     const { data: savedLines } = await getInvoiceLines(invoiceData.id)
     setViewInvoice({ invoice: invoiceData, lines: savedLines || [] })
-
     load()
     setSaving(false)
   }
@@ -160,11 +146,8 @@ export default function SalesInvoices() {
       payment_status: invoice.payment_status,
       payment_method: (invoice.payment_method || 'especes') as 'especes' | 'carte' | 'virement' | 'cheque',
       lines: lines.map(l => ({
-        id: l.id,
-        product_id: l.product_id || '',
-        designation: l.designation,
-        quantity: l.quantity,
-        unit_price: Number(l.unit_price),
+        id: l.id, product_id: l.product_id || '', designation: l.designation,
+        quantity: l.quantity, unit_price: Number(l.unit_price),
       })),
     })
     setEditError(null)
@@ -172,24 +155,24 @@ export default function SalesInvoices() {
   }
 
   const addEditLine = () => {
-    setEditForm({ ...editForm, lines: [...editForm.lines, { product_id: '', designation: '', quantity: 1, unit_price: 0 }] })
+    setEditForm({...editForm, lines: [...editForm.lines, { product_id: '', designation: '', quantity: 1, unit_price: 0 }] })
   }
 
   const updateEditLine = (index: number, field: string, value: string) => {
     const lines = [...editForm.lines]
     if (field === 'product_id') {
       const product = products.find(p => p.id === value)
-      lines[index] = { ...lines[index], product_id: value, designation: product?.designation || '', unit_price: product?.sale_price || 0 }
+      lines[index] = {...lines[index], product_id: value, designation: product?.designation || '', unit_price: product?.sale_price || 0 }
     } else if (field === 'quantity') {
-      lines[index].quantity = parseInt(value) || 1
+      lines[index].quantity = parseFloat(value) || 0.5
     } else if (field === 'unit_price') {
       lines[index].unit_price = parseFloat(value) || 0
     }
-    setEditForm({ ...editForm, lines })
+    setEditForm({...editForm, lines })
   }
 
   const removeEditLine = (index: number) => {
-    setEditForm({ ...editForm, lines: editForm.lines.filter((_, i) => i !== index) })
+    setEditForm({...editForm, lines: editForm.lines.filter((_, i) => i!== index) })
   }
 
   const editTotalAmount = editForm.lines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0)
@@ -200,27 +183,16 @@ export default function SalesInvoices() {
     setEditError(null)
     if (editForm.lines.length === 0) { setEditError('Ajoutez au moins une ligne'); return }
     setSavingEdit(true)
-
     const { error: invError } = await updateInvoice(editInvoice.id, {
-      total_ttc: editTotalAmount,
-      total_ht: editTotalAmount,
-      tva_amount: 0,
-      payment_status: editForm.payment_status,
-      payment_method: editForm.payment_method,
+      total_ttc: editTotalAmount, total_ht: editTotalAmount, tva_amount: 0,
+      payment_status: editForm.payment_status, payment_method: editForm.payment_method,
     })
-
     if (invError) { setEditError(invError.message); setSavingEdit(false); return }
-
     const { error: linesError } = await replaceInvoiceLines(editInvoice.id, editForm.lines.map(l => ({
-      product_id: l.product_id || null,
-      designation: l.designation,
-      quantity: l.quantity,
-      unit_price: l.unit_price,
-      line_total: l.quantity * l.unit_price,
+      product_id: l.product_id || null, designation: l.designation,
+      quantity: l.quantity, unit_price: l.unit_price, line_total: l.quantity * l.unit_price,
     })))
-
     if (linesError) { setEditError(linesError.message); setSavingEdit(false); return }
-
     setShowEditModal(false)
     load()
     setSavingEdit(false)
@@ -239,52 +211,25 @@ export default function SalesInvoices() {
     if (!deleteTarget) return
     setDeleteError(null)
     setDeleting(true)
-
     try {
       const valid = await verifySecretCode('sales_reset', adminPassword)
-      if (!valid) {
-        setDeleteError('Mot de passe administrateur incorrect')
-        setDeleting(false)
-        return
-      }
-
+      if (!valid) { setDeleteError('Mot de passe administrateur incorrect'); setDeleting(false); return }
       const { error: logError } = await insertInvoiceDeletion({
-        invoice_id: deleteTarget.id,
-        invoice_number: deleteTarget.invoice_number,
-        total_ttc: Number(deleteTarget.total_ttc),
-        justification: deleteJustification,
-        admin_id: profile?.id || '',
-        admin_email: profile?.email || '',
-        vendeur_id: deleteTarget.user_id || null,
-        vendeur_email: null,
+        invoice_id: deleteTarget.id, invoice_number: deleteTarget.invoice_number,
+        total_ttc: Number(deleteTarget.total_ttc), justification: deleteJustification,
+        admin_id: profile?.id || '', admin_email: profile?.email || '',
+        vendeur_id: deleteTarget.user_id || null, vendeur_email: null,
       })
-
-      if (logError) {
-        setDeleteError('Erreur lors de l\'enregistrement du justificatif: ' + logError.message)
-        setDeleting(false)
-        return
-      }
-
+      if (logError) { setDeleteError('Erreur justificatif: ' + logError.message); setDeleting(false); return }
       const { error: delError } = await deleteInvoice(deleteTarget.id)
-      if (delError) {
-        setDeleteError('Erreur lors de la suppression: ' + delError.message)
-        setDeleting(false)
-        return
-      }
-
+      if (delError) { setDeleteError('Erreur suppression: ' + delError.message); setDeleting(false); return }
       setShowDeleteModal(false)
       load()
-    } catch {
-      setDeleteError('Erreur lors de la suppression')
-    }
+    } catch { setDeleteError('Erreur lors de la suppression') }
     setDeleting(false)
   }
 
-  const todayInvoices = invoices.filter(inv => {
-    const invDate = new Date(inv.invoice_date).toISOString().split('T')[0]
-    return invDate === bilanDate
-  })
-
+  const todayInvoices = invoices.filter(inv => new Date(inv.invoice_date).toISOString().split('T')[0] === bilanDate)
   const bilanStats = {
     total: todayInvoices.length,
     totalAmount: todayInvoices.reduce((s, i) => s + Number(i.total_ttc), 0),
@@ -295,35 +240,23 @@ export default function SalesInvoices() {
     virement: todayInvoices.filter(i => i.payment_method === 'virement'),
     cheque: todayInvoices.filter(i => i.payment_method === 'cheque'),
   }
-
   const paidRevenue = bilanStats.paye.reduce((s, i) => s + Number(i.total_ttc), 0)
   const especesAmount = bilanStats.especes.reduce((s, i) => s + Number(i.total_ttc), 0)
   const carteAmount = bilanStats.carte.reduce((s, i) => s + Number(i.total_ttc), 0)
   const virementAmount = bilanStats.virement.reduce((s, i) => s + Number(i.total_ttc), 0)
   const chequeAmount = bilanStats.cheque.reduce((s, i) => s + Number(i.total_ttc), 0)
-
   const alreadyClosedToday = closures.some(c => {
-    const cDate = typeof c.closure_date === 'string' ? c.closure_date : new Date(c.closure_date).toISOString().split('T')[0]
+    const cDate = typeof c.closure_date === 'string'? c.closure_date : new Date(c.closure_date).toISOString().split('T')[0]
     return cDate === new Date().toISOString().split('T')[0] && c.vendeur_id === profile?.id
   })
-
   const handleEndOfDay = async () => {
-    if (todayInvoices.length === 0) {
-      setClosureError('Aucune vente à clôturer pour aujourd\'hui')
-      return
-    }
-    if (!confirm('Confirmer la clôture de la journée ? Cette action enregistre un récapitulatif définitif.')) return
-
+    if (todayInvoices.length === 0) { setClosureError('Aucune vente à clôturer'); return }
+    if (!confirm('Confirmer la clôture?')) return
     setClosingDay(true)
     setClosureError(null)
-
     try {
       const todayStr = new Date().toISOString().split('T')[0]
-      const todaysInvoices = invoices.filter(inv => {
-        const invDate = new Date(inv.invoice_date).toISOString().split('T')[0]
-        return invDate === todayStr
-      })
-
+      const todaysInvoices = invoices.filter(inv => new Date(inv.invoice_date).toISOString().split('T')[0] === todayStr)
       const { error: closError } = await insertDailyClosure({
         vendeur_id: profile?.id || null,
         vendeur_name: profile?.full_name || profile?.username || profile?.email || 'Vendeur',
@@ -340,20 +273,11 @@ export default function SalesInvoices() {
         carte_amount: todaysInvoices.filter(i => i.payment_method === 'carte').reduce((s, i) => s + Number(i.total_ttc), 0),
         virement_amount: todaysInvoices.filter(i => i.payment_method === 'virement').reduce((s, i) => s + Number(i.total_ttc), 0),
         cheque_amount: todaysInvoices.filter(i => i.payment_method === 'cheque').reduce((s, i) => s + Number(i.total_ttc), 0),
-        invoice_ids: todaysInvoices.map(i => i.id),
-        status: 'cloture',
+        invoice_ids: todaysInvoices.map(i => i.id), status: 'cloture',
       })
-
-      if (closError) {
-        setClosureError('Erreur: ' + closError.message)
-        setClosingDay(false)
-        return
-      }
-
+      if (closError) { setClosureError('Erreur: ' + closError.message); setClosingDay(false); return }
       load()
-    } catch {
-      setClosureError('Erreur lors de la clôture')
-    }
+    } catch { setClosureError('Erreur lors de la clôture') }
     setClosingDay(false)
   }
 
@@ -362,10 +286,8 @@ export default function SalesInvoices() {
     en_attente: { label: 'En attente', color: 'bg-warning-100 text-warning-700' },
     partiel: { label: 'Partiel', color: 'bg-primary-100 text-primary-700' },
   }
-
   const totalRevenue = invoices.filter(i => i.payment_status === 'paye').reduce((sum, i) => sum + Number(i.total_ttc), 0)
   const pendingCount = invoices.filter(i => i.payment_status === 'en_attente').length
-
   const companyName = companySettings?.company_name || 'Maman Star'
   const companyAddress = [companySettings?.address, companySettings?.city].filter(Boolean).join(', ')
   const companyPhone = companySettings?.phone || ''
@@ -377,58 +299,31 @@ export default function SalesInvoices() {
           <h1 className="text-2xl font-bold text-gray-900">Ventes & Factures</h1>
           <p className="text-gray-500 mt-1">Enregistrez vos ventes et gérez vos factures</p>
         </div>
-        <button onClick={openNewSale} className="btn-primary">
-          <Plus className="w-4 h-4" />
-          Nouvelle vente
-        </button>
+        <button onClick={openNewSale} className="btn-primary"><Plus className="w-4 h-4" />Nouvelle vente</button>
       </div>
 
       <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit flex-wrap">
-        <button onClick={() => setSubTab('ventes')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${subTab === 'ventes' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-          <FileText className="w-4 h-4" />Ventes
-        </button>
-        <button onClick={() => setSubTab('bilan')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${subTab === 'bilan' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-          <ClipboardCheck className="w-4 h-4" />Bilan de journée
-        </button>
-        <button onClick={() => setSubTab('closures')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${subTab === 'closures' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-          <CalendarCheck className="w-4 h-4" />Clôtures
-        </button>
+        <button onClick={() => setSubTab('ventes')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${subTab === 'ventes'? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><FileText className="w-4 h-4" />Ventes</button>
+        <button onClick={() => setSubTab('bilan')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${subTab === 'bilan'? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><ClipboardCheck className="w-4 h-4" />Bilan</button>
+        <button onClick={() => setSubTab('closures')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${subTab === 'closures'? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><CalendarCheck className="w-4 h-4" />Clôtures</button>
       </div>
 
       {subTab === 'ventes' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="card flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-accent-50 text-accent-600 flex items-center justify-center"><Wallet className="w-6 h-6" /></div>
-            <div><p className="text-sm text-gray-500">CA encaissé</p><p className="text-xl font-bold text-gray-900">{totalRevenue.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</p></div>
-          </div>
-          <div className="card flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-warning-50 text-warning-600 flex items-center justify-center"><Receipt className="w-6 h-6" /></div>
-            <div><p className="text-sm text-gray-500">Factures en attente</p><p className="text-xl font-bold text-gray-900">{pendingCount}</p></div>
-          </div>
+          <div className="card flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-accent-50 text-accent-600 flex items-center justify-center"><Wallet className="w-6 h-6" /></div><div><p className="text-sm text-gray-500">CA encaissé</p><p className="text-xl font-bold text-gray-900">{totalRevenue.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</p></div></div>
+          <div className="card flex items-center gap-4"><div className="w-12 h-12 rounded-xl bg-warning-50 text-warning-600 flex items-center justify-center"><Receipt className="w-6 h-6" /></div><div><p className="text-sm text-gray-500">Factures en attente</p><p className="text-xl font-bold text-gray-900">{pendingCount}</p></div></div>
         </div>
       )}
 
-      {loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div></div>
-      ) : subTab === 'ventes' ? (
+      {loading? <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div></div> : subTab === 'ventes'? (
         <div className="card">
-          {invoices.length === 0 ? (
-            <div className="text-center py-12"><FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-400">Aucune facture pour le moment</p></div>
-          ) : (
+          {invoices.length === 0? <div className="text-center py-12"><FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-400">Aucune facture</p></div> : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2">N° Facture</th>
-                    <th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2 hidden md:table-cell">Date</th>
-                    <th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2">Montant</th>
-                    <th className="text-center text-xs font-medium text-gray-500 uppercase py-3 px-2">Paiement</th>
-                    <th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2">Actions</th>
-                  </tr>
-                </thead>
+                <thead><tr className="border-b border-gray-200"><th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2">N° Facture</th><th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2 hidden md:table-cell">Date</th><th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2">Montant</th><th className="text-center text-xs font-medium text-gray-500 uppercase py-3 px-2">Paiement</th><th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2">Actions</th></tr></thead>
                 <tbody className="divide-y divide-gray-100">
                   {invoices.map(invoice => (
-                    <tr key={invoice.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={invoice.id} className="hover:bg-gray-50">
                       <td className="py-3 px-2 text-sm font-medium text-gray-900">{invoice.invoice_number}</td>
                       <td className="py-3 px-2 text-sm text-gray-500 hidden md:table-cell">{new Date(invoice.invoice_date).toLocaleDateString('fr-FR')}</td>
                       <td className="py-3 px-2 text-right text-sm font-semibold text-gray-900">{Number(invoice.total_ttc).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</td>
@@ -437,13 +332,11 @@ export default function SalesInvoices() {
                           {Object.entries(statusConfig).map(([key, cfg]) => <option key={key} value={key}>{cfg.label}</option>)}
                         </select>
                       </td>
-                      <td className="py-3 px-2 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => viewInvoiceDetails(invoice)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg" title="Voir / Imprimer"><Eye className="w-4 h-4" /></button>
-                          <button onClick={() => openEditModal(invoice)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg" title="Modifier"><Pencil className="w-4 h-4" /></button>
-                          <button onClick={() => openDeleteModal(invoice)} className="p-2 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
-                        </div>
-                      </td>
+                      <td className="py-3 px-2 text-right"><div className="flex items-center justify-end gap-1">
+                        <button onClick={() => viewInvoiceDetails(invoice)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg"><Eye className="w-4 h-4" /></button>
+                        <button onClick={() => openEditModal(invoice)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => openDeleteModal(invoice)} className="p-2 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                      </div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -451,89 +344,25 @@ export default function SalesInvoices() {
             </div>
           )}
         </div>
-      ) : subTab === 'bilan' ? (
+      ) : subTab === 'bilan'? (
         <div className="space-y-6">
           <div className="card flex flex-wrap gap-4 items-end">
-            <div className="flex-1 min-w-[200px]">
-              <label className="label">Date du bilan</label>
-              <input type="date" value={bilanDate} onChange={e => setBilanDate(e.target.value)} className="input" />
-            </div>
-            <button onClick={handleEndOfDay} disabled={closingDay || alreadyClosedToday} className="btn-primary" title={alreadyClosedToday ? 'Journée déjà clôturée' : 'Enregistrer le récapitulatif de la journée'}>
-              {closingDay ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><CalendarCheck className="w-4 h-4" /> Fin de journée</>}
-            </button>
+            <div className="flex-1 min-w-[200px]"><label className="label">Date du bilan</label><input type="date" value={bilanDate} onChange={e => setBilanDate(e.target.value)} className="input" /></div>
+            <button onClick={handleEndOfDay} disabled={closingDay || alreadyClosedToday} className="btn-primary">{closingDay? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><CalendarCheck className="w-4 h-4" /> Fin de journée</>}</button>
           </div>
-
           {closureError && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{closureError}</div>}
-
-          {alreadyClosedToday && bilanDate === new Date().toISOString().split('T')[0] && (
-            <div className="text-sm text-accent-700 bg-accent-50 border border-accent-200 rounded-lg p-3 flex items-center gap-2">
-              <CalendarCheck className="w-4 h-4" /> La journée d'aujourd'hui a déjà été clôturée.
-            </div>
-          )}
-
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="card flex items-center gap-3"><div className="w-11 h-11 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center"><FileText className="w-6 h-6" /></div><div><p className="text-sm text-gray-500">Ventes</p><p className="text-xl font-bold text-gray-900">{bilanStats.total}</p></div></div>
             <div className="card flex items-center gap-3"><div className="w-11 h-11 rounded-xl bg-accent-50 text-accent-600 flex items-center justify-center"><Wallet className="w-6 h-6" /></div><div><p className="text-sm text-gray-500">CA total</p><p className="text-xl font-bold text-gray-900">{bilanStats.totalAmount.toLocaleString('fr-FR')} FCFA</p></div></div>
             <div className="card flex items-center gap-3"><div className="w-11 h-11 rounded-xl bg-accent-50 text-accent-600 flex items-center justify-center"><CreditCard className="w-6 h-6" /></div><div><p className="text-sm text-gray-500">Encaissé</p><p className="text-xl font-bold text-gray-900">{paidRevenue.toLocaleString('fr-FR')} FCFA</p></div></div>
             <div className="card flex items-center gap-3"><div className="w-11 h-11 rounded-xl bg-warning-50 text-warning-600 flex items-center justify-center"><Receipt className="w-6 h-6" /></div><div><p className="text-sm text-gray-500">En attente</p><p className="text-xl font-bold text-gray-900">{bilanStats.enAttente.length}</p></div></div>
           </div>
-
-          <div className="card">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Répartition par mode de paiement</h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="border border-gray-200 rounded-xl p-4"><p className="text-sm text-gray-500">Espèces</p><p className="text-lg font-bold text-gray-900">{bilanStats.especes.length} vente{bilanStats.especes.length > 1 ? 's' : ''}</p><p className="text-sm text-accent-600 mt-1">{especesAmount.toLocaleString('fr-FR')} FCFA</p></div>
-              <div className="border border-gray-200 rounded-xl p-4"><p className="text-sm text-gray-500">Carte</p><p className="text-lg font-bold text-gray-900">{bilanStats.carte.length} vente{bilanStats.carte.length > 1 ? 's' : ''}</p><p className="text-sm text-accent-600 mt-1">{carteAmount.toLocaleString('fr-FR')} FCFA</p></div>
-              <div className="border border-gray-200 rounded-xl p-4"><p className="text-sm text-gray-500">Virement</p><p className="text-lg font-bold text-gray-900">{bilanStats.virement.length} vente{bilanStats.virement.length > 1 ? 's' : ''}</p><p className="text-sm text-accent-600 mt-1">{virementAmount.toLocaleString('fr-FR')} FCFA</p></div>
-              <div className="border border-gray-200 rounded-xl p-4"><p className="text-sm text-gray-500">Chèque</p><p className="text-lg font-bold text-gray-900">{bilanStats.cheque.length} vente{bilanStats.cheque.length > 1 ? 's' : ''}</p><p className="text-sm text-accent-600 mt-1">{chequeAmount.toLocaleString('fr-FR')} FCFA</p></div>
-            </div>
-          </div>
-
-          <div className="card">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Ventes du {new Date(bilanDate).toLocaleDateString('fr-FR')}</h2>
-            {todayInvoices.length === 0 ? (
-              <div className="text-center py-8"><FileText className="w-10 h-10 text-gray-300 mx-auto mb-2" /><p className="text-gray-400">Aucune vente à cette date</p></div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead><tr className="border-b border-gray-200"><th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2">N° Facture</th><th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2">Montant</th><th className="text-center text-xs font-medium text-gray-500 uppercase py-3 px-2">Paiement</th><th className="text-center text-xs font-medium text-gray-500 uppercase py-3 px-2 hidden sm:table-cell">Mode</th></tr></thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {todayInvoices.map(invoice => (
-                      <tr key={invoice.id} className="hover:bg-gray-50">
-                        <td className="py-3 px-2 text-sm font-medium text-gray-900">{invoice.invoice_number}</td>
-                        <td className="py-3 px-2 text-right text-sm font-semibold text-gray-900">{Number(invoice.total_ttc).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</td>
-                        <td className="py-3 px-2 text-center"><span className={`badge ${statusConfig[invoice.payment_status].color}`}>{statusConfig[invoice.payment_status].label}</span></td>
-                        <td className="py-3 px-2 text-center text-sm text-gray-600 hidden sm:table-cell capitalize">{invoice.payment_method || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
         </div>
       ) : (
         <div className="card">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Historique des clôtures</h2>
-          {closures.length === 0 ? (
-            <div className="text-center py-12"><CalendarCheck className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-400">Aucune clôture enregistrée</p></div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead><tr className="border-b border-gray-200"><th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2">Date</th><th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2 hidden sm:table-cell">Vendeur</th><th className="text-center text-xs font-medium text-gray-500 uppercase py-3 px-2">Ventes</th><th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2">Montant</th><th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2 hidden md:table-cell">Espèces</th><th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2 hidden md:table-cell">Carte</th></tr></thead>
-                <tbody className="divide-y divide-gray-100">
-                  {closures.map(c => (
-                    <tr key={c.id} className="hover:bg-gray-50">
-                      <td className="py-3 px-2 text-sm text-gray-600">{new Date(c.closure_date).toLocaleDateString('fr-FR')}</td>
-                      <td className="py-3 px-2 text-sm font-medium text-gray-900 hidden sm:table-cell">{c.vendeur_name}</td>
-                      <td className="py-3 px-2 text-center text-sm text-gray-900">{c.total_invoices}</td>
-                      <td className="py-3 px-2 text-right text-sm font-semibold text-gray-900">{Number(c.total_ttc).toLocaleString('fr-FR')} FCFA</td>
-                      <td className="py-3 px-2 text-right text-sm text-accent-600 hidden md:table-cell">{Number(c.especes_amount).toLocaleString('fr-FR')} FCFA</td>
-                      <td className="py-3 px-2 text-right text-sm text-accent-600 hidden md:table-cell">{Number(c.carte_amount).toLocaleString('fr-FR')} FCFA</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {closures.length === 0? <div className="text-center py-12"><CalendarCheck className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-400">Aucune clôture</p></div> : (
+            <div className="overflow-x-auto"><table className="w-full"><thead><tr className="border-b border-gray-200"><th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2">Date</th><th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2 hidden sm:table-cell">Vendeur</th><th className="text-center text-xs font-medium text-gray-500 uppercase py-3 px-2">Ventes</th><th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2">Montant</th></tr></thead><tbody className="divide-y divide-gray-100">{closures.map(c => (<tr key={c.id} className="hover:bg-gray-50"><td className="py-3 px-2 text-sm text-gray-600">{new Date(c.closure_date).toLocaleDateString('fr-FR')}</td><td className="py-3 px-2 text-sm font-medium text-gray-900 hidden sm:table-cell">{c.vendeur_name}</td><td className="py-3 px-2 text-center text-sm text-gray-900">{c.total_invoices}</td><td className="py-3 px-2 text-right text-sm font-semibold text-gray-900">{Number(c.total_ttc).toLocaleString('fr-FR')} FCFA</td></tr>))}</tbody></table></div>
           )}
         </div>
       )}
@@ -541,106 +370,43 @@ export default function SalesInvoices() {
       {showModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Nouvelle vente / facture</h2>
-              <button onClick={() => setShowModal(false)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5 text-gray-500" /></button>
-            </div>
-
+            <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-semibold text-gray-900">Nouvelle vente / facture</h2><button onClick={() => setShowModal(false)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5 text-gray-500" /></button></div>
             <form onSubmit={handleSave} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div><label className="label">Statut paiement</label><select value={form.payment_status} onChange={e => setForm({ ...form, payment_status: e.target.value as 'paye' | 'en_attente' | 'partiel' })} className="input"><option value="en_attente">En attente</option><option value="paye">Payé</option><option value="partiel">Partiel</option></select></div>
-                <div><label className="label">Mode de paiement</label><select value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value as 'especes' | 'carte' | 'virement' | 'cheque' })} className="input"><option value="especes">Espèces</option><option value="carte">Carte</option><option value="virement">Virement</option><option value="cheque">Chèque</option></select></div>
+                <div><label className="label">Statut paiement</label><select value={form.payment_status} onChange={e => setForm({...form, payment_status: e.target.value as any })} className="input"><option value="en_attente">En attente</option><option value="paye">Payé</option><option value="partiel">Partiel</option></select></div>
+                <div><label className="label">Mode de paiement</label><select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value as any })} className="input"><option value="especes">Espèces</option><option value="carte">Carte</option><option value="virement">Virement</option><option value="cheque">Chèque</option></select></div>
               </div>
-
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="label mb-0">Articles</label>
-                  <button type="button" onClick={addLine} className="btn-ghost text-sm text-primary-600"><Plus className="w-4 h-4" /> Ajouter un article</button>
-                </div>
-                {form.lines.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4 border border-dashed border-gray-200 rounded-lg">Cliquez sur « Ajouter un article » pour commencer</p>
-                ) : (
+                <div className="flex items-center justify-between mb-2"><label className="label mb-0">Articles</label><button type="button" onClick={addLine} className="btn-ghost text-sm text-primary-600"><Plus className="w-4 h-4" /> Ajouter</button></div>
+                {form.lines.length === 0? <p className="text-sm text-gray-400 text-center py-4 border border-dashed border-gray-200 rounded-lg">Cliquez sur Ajouter</p> : (
                   <div className="space-y-2">
                     {form.lines.map((line, index) => (
                       <div key={index} className="flex items-center gap-2">
-                        <select value={line.product_id} onChange={e => updateLine(index, 'product_id', e.target.value)} className="input flex-1"><option value="">Sélectionner un produit</option>{products.map(p => <option key={p.id} value={p.id}>{p.designation} ({p.sale_price}FCFA)</option>)}</select>
-                        <input type="number" min="1" value={line.quantity} onChange={e => updateLine(index, 'quantity', e.target.value)} className="input w-20" placeholder="Qté" />
+                        <select value={line.product_id} onChange={e => updateLine(index, 'product_id', e.target.value)} className="input flex-1"><option value="">Produit</option>{products.map(p => <option key={p.id} value={p.id}>{p.designation} ({p.sale_price}FCFA)</option>)}</select>
+                        <input type="number" min="0.5" step="0.5" value={line.quantity} onChange={e => updateLine(index, 'quantity', e.target.value)} className="input w-20" placeholder="Qté" />
                         <input type="number" step="0.01" value={line.unit_price} onChange={e => updateLine(index, 'unit_price', e.target.value)} className="input w-24" placeholder="Prix" />
                         <span className="text-sm font-medium text-gray-700 w-24 text-right">{(line.quantity * line.unit_price).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</span>
-                        <button type="button" onClick={() => removeLine(index)} className="p-2 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => removeLine(index)} className="p-2 text-gray-400 hover:text-danger-600"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-
-              {form.lines.length > 0 && (
-                <div className="bg-gray-50 rounded-lg p-4"><div className="flex justify-between text-base font-bold"><span className="text-gray-900">Total</span><span className="text-primary-700">{totalAmount.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</span></div></div>
-              )}
-
+              {form.lines.length > 0 && <div className="bg-gray-50 rounded-lg p-4"><div className="flex justify-between text-base font-bold"><span>Total</span><span className="text-primary-700">{totalAmount.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</span></div></div>}
               {error && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{error}</div>}
-
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary flex-1">Annuler</button>
-                <button type="submit" disabled={saving} className="btn-primary flex-1">{saving ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><CreditCard className="w-4 h-4" /> Encaisser & facturer</>}</button>
-              </div>
+              <div className="flex gap-3 pt-2"><button type="button" onClick={() => setShowModal(false)} className="btn-secondary flex-1">Annuler</button><button type="submit" disabled={saving} className="btn-primary flex-1">{saving? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><CreditCard className="w-4 h-4" /> Encaisser</>}</button></div>
             </form>
           </div>
         </div>
       )}
 
       {viewInvoice && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 print:bg-white print:p-0 print:block">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto print:max-w-none print:shadow-none print:rounded-none print:max-h-none print:overflow-visible print:p-0 invoice-print">
-            <div className="flex items-center justify-between mb-6 print:hidden">
-              <h2 className="text-lg font-semibold text-gray-900">{viewInvoice.invoice.invoice_number}</h2>
-              <div className="flex gap-2">
-                <button onClick={() => window.print()} className="btn-secondary"><Printer className="w-4 h-4" /> Imprimer</button>
-                <button onClick={() => setViewInvoice(null)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5 text-gray-500" /></button>
-              </div>
-            </div>
-
-            <div className="invoice-document">
-              <div className="flex justify-between items-start mb-6 pb-4 border-b-2 border-gray-800">
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">{companyName}</h1>
-                  {companyAddress && <p className="text-sm text-gray-600">{companyAddress}</p>}
-                  {companyPhone && <p className="text-sm text-gray-600">Tel: {companyPhone}</p>}
-                </div>
-                <div className="text-right">
-                  <p className="text-xl font-bold text-gray-900">FACTURE</p>
-                  <p className="text-sm text-gray-700 font-medium">{viewInvoice.invoice.invoice_number}</p>
-                  <p className="text-sm text-gray-500">{new Date(viewInvoice.invoice.invoice_date).toLocaleDateString('fr-FR')}</p>
-                </div>
-              </div>
-
-              <div className="mb-4 text-sm text-gray-500"><p>Vente comptoir</p></div>
-
-              <table className="w-full mb-4 border-collapse">
-                <thead><tr className="border-b-2 border-gray-300"><th className="text-left text-xs font-semibold text-gray-700 py-2">Désignation</th><th className="text-center text-xs font-semibold text-gray-700 py-2">Qté</th><th className="text-right text-xs font-semibold text-gray-700 py-2">Prix unit.</th><th className="text-right text-xs font-semibold text-gray-700 py-2">Total</th></tr></thead>
-                <tbody>
-                  {viewInvoice.lines.map(line => (
-                    <tr key={line.id} className="border-b border-gray-100">
-                      <td className="py-2 text-sm text-gray-900">{line.designation}</td>
-                      <td className="py-2 text-sm text-center text-gray-600">{line.quantity}</td>
-                      <td className="py-2 text-sm text-right text-gray-600">{Number(line.unit_price).toLocaleString('fr-FR', { minimumFractionDigits: 2 })}</td>
-                      <td className="py-2 text-sm text-right font-medium text-gray-900">{Number(line.line_total).toLocaleString('fr-FR', { minimumFractionDigits: 2 })}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              <div className="ml-auto w-full max-w-xs space-y-1 mb-6">
-                <div className="flex justify-between text-base font-bold pt-2 border-t-2 border-gray-300"><span>Total</span><span>{Number(viewInvoice.invoice.total_ttc).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</span></div>
-              </div>
-
-              <div className="mb-4">
-                <span className={`badge ${statusConfig[viewInvoice.invoice.payment_status].color}`}>{statusConfig[viewInvoice.invoice.payment_status].label}</span>
-                <span className="text-sm text-gray-500 ml-2 capitalize">Mode: {viewInvoice.invoice.payment_method || '—'}</span>
-              </div>
-
-              <div className="text-center text-xs text-gray-400 border-t border-gray-200 pt-4 mt-6">Merci de votre confiance</div>
-            </div>
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6"><h2 className="text-lg font-semibold">{viewInvoice.invoice.invoice_number}</h2><div className="flex gap-2"><button onClick={() => window.print()} className="btn-secondary"><Printer className="w-4 h-4" /> Imprimer</button><button onClick={() => setViewInvoice(null)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5" /></button></div></div>
+            <div className="mb-6 pb-4 border-b-2 border-gray-800"><h1 className="text-2xl font-bold">{companyName}</h1><p className="text-sm text-gray-600">{companyAddress}</p></div>
+            <table className="w-full mb-4"><thead><tr className="border-b-2 border-gray-300"><th className="text-left text-xs font-semibold py-2">Désignation</th><th className="text-center text-xs font-semibold py-2">Qté</th><th className="text-right text-xs font-semibold py-2">Total</th></tr></thead><tbody>{viewInvoice.lines.map(line => (<tr key={line.id} className="border-b border-gray-100"><td className="py-2 text-sm">{line.designation}</td><td className="py-2 text-sm text-center">{line.quantity}</td><td className="py-2 text-sm text-right font-medium">{Number(line.line_total).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</td></tr>))}</tbody></table>
+            <div className="flex justify-between text-base font-bold pt-2 border-t-2"><span>Total</span><span>{Number(viewInvoice.invoice.total_ttc).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</span></div>
           </div>
         </div>
       )}
@@ -648,49 +414,25 @@ export default function SalesInvoices() {
       {showEditModal && editInvoice && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Modifier la facture {editInvoice.invoice_number}</h2>
-              <button onClick={() => setShowEditModal(false)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5 text-gray-500" /></button>
-            </div>
-
+            <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-semibold">Modifier {editInvoice.invoice_number}</h2><button onClick={() => setShowEditModal(false)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5" /></button></div>
             <form onSubmit={handleEditSave} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div><label className="label">Statut paiement</label><select value={editForm.payment_status} onChange={e => setEditForm({ ...editForm, payment_status: e.target.value as 'paye' | 'en_attente' | 'partiel' })} className="input"><option value="en_attente">En attente</option><option value="paye">Payé</option><option value="partiel">Partiel</option></select></div>
-                <div><label className="label">Mode de paiement</label><select value={editForm.payment_method} onChange={e => setEditForm({ ...editForm, payment_method: e.target.value as 'especes' | 'carte' | 'virement' | 'cheque' })} className="input"><option value="especes">Espèces</option><option value="carte">Carte</option><option value="virement">Virement</option><option value="cheque">Chèque</option></select></div>
+                <div><label className="label">Statut</label><select value={editForm.payment_status} onChange={e => setEditForm({...editForm, payment_status: e.target.value as any })} className="input"><option value="en_attente">En attente</option><option value="paye">Payé</option><option value="partiel">Partiel</option></select></div>
+                <div><label className="label">Mode</label><select value={editForm.payment_method} onChange={e => setEditForm({...editForm, payment_method: e.target.value as any })} className="input"><option value="especes">Espèces</option><option value="carte">Carte</option><option value="virement">Virement</option><option value="cheque">Chèque</option></select></div>
               </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="label mb-0">Articles</label>
-                  <button type="button" onClick={addEditLine} className="btn-ghost text-sm text-primary-600"><Plus className="w-4 h-4" /> Ajouter un article</button>
-                </div>
-                {editForm.lines.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4 border border-dashed border-gray-200 rounded-lg">Aucun article</p>
-                ) : (
-                  <div className="space-y-2">
-                    {editForm.lines.map((line, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <select value={line.product_id} onChange={e => updateEditLine(index, 'product_id', e.target.value)} className="input flex-1"><option value="">Sélectionner un produit</option>{products.map(p => <option key={p.id} value={p.id}>{p.designation} ({p.sale_price}FCFA)</option>)}</select>
-                        <input type="number" min="1" value={line.quantity} onChange={e => updateEditLine(index, 'quantity', e.target.value)} className="input w-20" placeholder="Qté" />
-                        <input type="number" step="0.01" value={line.unit_price} onChange={e => updateEditLine(index, 'unit_price', e.target.value)} className="input w-24" placeholder="Prix" />
-                        <span className="text-sm font-medium text-gray-700 w-24 text-right">{(line.quantity * line.unit_price).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</span>
-                        <button type="button" onClick={() => removeEditLine(index)} className="p-2 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    ))}
+              <div className="space-y-2">
+                {editForm.lines.map((line, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <select value={line.product_id} onChange={e => updateEditLine(index, 'product_id', e.target.value)} className="input flex-1"><option value="">Produit</option>{products.map(p => <option key={p.id} value={p.id}>{p.designation}</option>)}</select>
+                    <input type="number" min="0.5" step="0.5" value={line.quantity} onChange={e => updateEditLine(index, 'quantity', e.target.value)} className="input w-20" />
+                    <input type="number" step="0.01" value={line.unit_price} onChange={e => updateEditLine(index, 'unit_price', e.target.value)} className="input w-24" />
+                    <span className="text-sm font-medium w-24 text-right">{(line.quantity * line.unit_price).toLocaleString('fr-FR')} FCFA</span>
+                    <button type="button" onClick={() => removeEditLine(index)} className="p-2 text-gray-400 hover:text-danger-600"><Trash2 className="w-4 h-4" /></button>
                   </div>
-                )}
+                ))}
               </div>
-
-              {editForm.lines.length > 0 && (
-                <div className="bg-gray-50 rounded-lg p-4"><div className="flex justify-between text-base font-bold"><span className="text-gray-900">Total</span><span className="text-primary-700">{editTotalAmount.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</span></div></div>
-              )}
-
               {editError && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{editError}</div>}
-
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary flex-1">Annuler</button>
-                <button type="submit" disabled={savingEdit} className="btn-primary flex-1">{savingEdit ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : 'Enregistrer les modifications'}</button>
-              </div>
+              <div className="flex gap-3"><button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary flex-1">Annuler</button><button type="submit" disabled={savingEdit} className="btn-primary flex-1">{savingEdit? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : 'Enregistrer'}</button></div>
             </form>
           </div>
         </div>
@@ -699,38 +441,21 @@ export default function SalesInvoices() {
       {showDeleteModal && deleteTarget && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-danger-600" />Supprimer la vente</h2>
-              <button onClick={() => setShowDeleteModal(false)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5 text-gray-500" /></button>
-            </div>
-
-            <div className="bg-danger-50 border border-danger-200 rounded-lg p-3 mb-4">
-              <p className="text-sm text-danger-700">Vous êtes sur le point de supprimer la facture <strong>{deleteTarget.invoice_number}</strong> d'un montant de <strong>{Number(deleteTarget.total_ttc).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} FCFA</strong>.</p>
-              <p className="text-xs text-danger-600 mt-1">Un justificatif sera enregistré et notifié à la comptabilité.</p>
-            </div>
-
+            <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-semibold flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-danger-600" />Supprimer</h2><button onClick={() => setShowDeleteModal(false)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5" /></button></div>
             <form onSubmit={handleDeleteInvoice} className="space-y-4">
               <div>
-                <label className="label">Mot de passe administrateur *</label>
+                <label className="label">Mot de passe admin *</label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input type="password" required value={adminPassword} onChange={e => { setAdminPassword(e.target.value); setDeleteError(null) }} className="input pl-10" placeholder="••••••••" autoFocus />
+                  <input type={showAdminPassword? "text" : "password"} required value={adminPassword} onChange={e => { setAdminPassword(e.target.value); setDeleteError(null) }} className="input pl-10 pr-10" placeholder="••••••••" />
+                  <button type="button" onClick={() => setShowAdminPassword(!showAdminPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    {showAdminPassword? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">Autorisation requise pour supprimer une vente</p>
               </div>
-
-              <div>
-                <label className="label">Justificatif *</label>
-                <textarea required value={deleteJustification} onChange={e => { setDeleteJustification(e.target.value); setDeleteError(null) }} className="input min-h-[80px] resize-y" placeholder="Raison de la suppression (vente annulée, erreur de saisie, etc.)" />
-                <p className="text-xs text-gray-400 mt-1">Ce justificatif sera visible par la comptabilité</p>
-              </div>
-
+              <div><label className="label">Justificatif *</label><textarea required value={deleteJustification} onChange={e => { setDeleteJustification(e.target.value); setDeleteError(null) }} className="input min-h-[80px]" placeholder="Raison de la suppression..." /></div>
               {deleteError && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{deleteError}</div>}
-
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowDeleteModal(false)} className="btn-secondary flex-1">Annuler</button>
-                <button type="submit" disabled={deleting} className="btn-danger flex-1">{deleting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Trash2 className="w-4 h-4" /> Supprimer</>}</button>
-              </div>
+              <div className="flex gap-3"><button type="button" onClick={() => setShowDeleteModal(false)} className="btn-secondary flex-1">Annuler</button><button type="submit" disabled={deleting} className="btn-danger flex-1">{deleting? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Trash2 className="w-4 h-4" /> Supprimer</>}</button></div>
             </form>
           </div>
         </div>
