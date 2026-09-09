@@ -10,7 +10,7 @@ import {
   Plus, X, FileText, Eye, Trash2, Printer,
   Wallet, Receipt, CreditCard,
   ClipboardCheck, Lock, AlertTriangle, CalendarCheck, Pencil,
-  EyeOff,
+  EyeOff, ShieldAlert
 } from 'lucide-react'
 import type { Invoice, Product, InvoiceLine, DailyClosure, CompanySettings } from '../types'
 
@@ -53,6 +53,13 @@ export default function SalesInvoices() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // NOUVEAU: Prompt code secret pour edit
+  const [showSecretModal, setShowSecretModal] = useState(false)
+  const [secretInput, setSecretInput] = useState('')
+  const [secretError, setSecretError] = useState<string | null>(null)
+  const [secretAction, setSecretAction] = useState<(() => void) | null>(null)
+  const [secretKey, setSecretKey] = useState('sales_edit')
+
   const [bilanDate, setBilanDate] = useState(new Date().toISOString().split('T')[0])
   const [closingDay, setClosingDay] = useState(false)
   const [closureError, setClosureError] = useState<string | null>(null)
@@ -70,6 +77,34 @@ export default function SalesInvoices() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // --- NOUVEAU: Filtrage des ventes par vendeur ---
+  const displayedInvoices = profile?.role === 'vendeur'
+   ? invoices.filter(inv => inv.user_id === profile?.id)
+    : invoices
+
+  // --- NOUVEAU: Demande code secret ---
+  const askSecretCode = (key: string, action: () => void) => {
+    if (profile?.role === 'admin') {
+      action()
+      return
+    }
+    setSecretKey(key)
+    setSecretAction(() => action)
+    setSecretInput('')
+    setSecretError(null)
+    setShowSecretModal(true)
+  }
+
+  const verifySecretAndProceed = async () => {
+    const valid = await verifySecretCode(secretKey, secretInput)
+    if (!valid) {
+      setSecretError('Code secret incorrect! Demande à l\'admin')
+      return
+    }
+    setShowSecretModal(false)
+    if (secretAction) secretAction()
+  }
 
   const addLine = () => {
     setForm({...form, lines: [...form.lines, { product_id: '', designation: '', quantity: 1, unit_price: 0 }] })
@@ -133,25 +168,36 @@ export default function SalesInvoices() {
   }
 
   const updatePaymentStatus = async (invoiceId: string, status: Invoice['payment_status']) => {
-    await updateInvoice(invoiceId, { payment_status: status })
-    load()
+    const doUpdate = async () => {
+      await updateInvoice(invoiceId, { payment_status: status })
+      load()
+    }
+    // Si vendeur, demande code secret
+    if (profile?.role === 'vendeur') {
+      askSecretCode('sales_edit', doUpdate)
+    } else {
+      doUpdate()
+    }
   }
 
   const openEditModal = async (invoice: Invoice) => {
-    const { data } = await getInvoiceLines(invoice.id)
-    const lines = data || []
-    setEditInvoice(invoice)
-    setEditLines(lines)
-    setEditForm({
-      payment_status: invoice.payment_status,
-      payment_method: (invoice.payment_method || 'especes') as 'especes' | 'carte' | 'virement' | 'cheque',
-      lines: lines.map(l => ({
-        id: l.id, product_id: l.product_id || '', designation: l.designation,
-        quantity: l.quantity, unit_price: Number(l.unit_price),
-      })),
-    })
-    setEditError(null)
-    setShowEditModal(true)
+    const doOpen = async () => {
+      const { data } = await getInvoiceLines(invoice.id)
+      const lines = data || []
+      setEditInvoice(invoice)
+      setEditLines(lines)
+      setEditForm({
+        payment_status: invoice.payment_status,
+        payment_method: (invoice.payment_method || 'especes') as 'especes' | 'carte' | 'virement' | 'cheque',
+        lines: lines.map(l => ({
+          id: l.id, product_id: l.product_id || '', designation: l.designation,
+          quantity: l.quantity, unit_price: Number(l.unit_price),
+        })),
+      })
+      setEditError(null)
+      setShowEditModal(true)
+    }
+    askSecretCode('sales_edit', doOpen)
   }
 
   const addEditLine = () => {
@@ -229,7 +275,7 @@ export default function SalesInvoices() {
     setDeleting(false)
   }
 
-  const todayInvoices = invoices.filter(inv => new Date(inv.invoice_date).toISOString().split('T')[0] === bilanDate)
+  const todayInvoices = displayedInvoices.filter(inv => new Date(inv.invoice_date).toISOString().split('T')[0] === bilanDate)
   const bilanStats = {
     total: todayInvoices.length,
     totalAmount: todayInvoices.reduce((s, i) => s + Number(i.total_ttc), 0),
@@ -241,10 +287,6 @@ export default function SalesInvoices() {
     cheque: todayInvoices.filter(i => i.payment_method === 'cheque'),
   }
   const paidRevenue = bilanStats.paye.reduce((s, i) => s + Number(i.total_ttc), 0)
-  const especesAmount = bilanStats.especes.reduce((s, i) => s + Number(i.total_ttc), 0)
-  const carteAmount = bilanStats.carte.reduce((s, i) => s + Number(i.total_ttc), 0)
-  const virementAmount = bilanStats.virement.reduce((s, i) => s + Number(i.total_ttc), 0)
-  const chequeAmount = bilanStats.cheque.reduce((s, i) => s + Number(i.total_ttc), 0)
   const alreadyClosedToday = closures.some(c => {
     const cDate = typeof c.closure_date === 'string'? c.closure_date : new Date(c.closure_date).toISOString().split('T')[0]
     return cDate === new Date().toISOString().split('T')[0] && c.vendeur_id === profile?.id
@@ -256,7 +298,7 @@ export default function SalesInvoices() {
     setClosureError(null)
     try {
       const todayStr = new Date().toISOString().split('T')[0]
-      const todaysInvoices = invoices.filter(inv => new Date(inv.invoice_date).toISOString().split('T')[0] === todayStr)
+      const todaysInvoices = displayedInvoices.filter(inv => new Date(inv.invoice_date).toISOString().split('T')[0] === todayStr)
       const { error: closError } = await insertDailyClosure({
         vendeur_id: profile?.id || null,
         vendeur_name: profile?.full_name || profile?.username || profile?.email || 'Vendeur',
@@ -286,8 +328,8 @@ export default function SalesInvoices() {
     en_attente: { label: 'En attente', color: 'bg-warning-100 text-warning-700' },
     partiel: { label: 'Partiel', color: 'bg-primary-100 text-primary-700' },
   }
-  const totalRevenue = invoices.filter(i => i.payment_status === 'paye').reduce((sum, i) => sum + Number(i.total_ttc), 0)
-  const pendingCount = invoices.filter(i => i.payment_status === 'en_attente').length
+  const totalRevenue = displayedInvoices.filter(i => i.payment_status === 'paye').reduce((sum, i) => sum + Number(i.total_ttc), 0)
+  const pendingCount = displayedInvoices.filter(i => i.payment_status === 'en_attente').length
   const companyName = companySettings?.company_name || 'Maman Star'
   const companyAddress = [companySettings?.address, companySettings?.city].filter(Boolean).join(', ')
   const companyPhone = companySettings?.phone || ''
@@ -297,7 +339,10 @@ export default function SalesInvoices() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Ventes & Factures</h1>
-          <p className="text-gray-500 mt-1">Enregistrez vos ventes et gérez vos factures</p>
+          <p className="text-gray-500 mt-1">
+            {profile?.role === 'vendeur'? 'Mes ventes uniquement' : 'Toutes les ventes'}
+            {profile?.role === 'vendeur' && <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">🔒 Vendeur: {profile.full_name}</span>}
+          </p>
         </div>
         <button onClick={openNewSale} className="btn-primary"><Plus className="w-4 h-4" />Nouvelle vente</button>
       </div>
@@ -317,12 +362,12 @@ export default function SalesInvoices() {
 
       {loading? <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div></div> : subTab === 'ventes'? (
         <div className="card">
-          {invoices.length === 0? <div className="text-center py-12"><FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-400">Aucune facture</p></div> : (
+          {displayedInvoices.length === 0? <div className="text-center py-12"><FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-400">{profile?.role === 'vendeur'? 'Tu n\'as pas encore de ventes aujourd\'hui' : 'Aucune facture'}</p></div> : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead><tr className="border-b border-gray-200"><th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2">N° Facture</th><th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2 hidden md:table-cell">Date</th><th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2">Montant</th><th className="text-center text-xs font-medium text-gray-500 uppercase py-3 px-2">Paiement</th><th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2">Actions</th></tr></thead>
                 <tbody className="divide-y divide-gray-100">
-                  {invoices.map(invoice => (
+                  {displayedInvoices.map(invoice => (
                     <tr key={invoice.id} className="hover:bg-gray-50">
                       <td className="py-3 px-2 text-sm font-medium text-gray-900">{invoice.invoice_number}</td>
                       <td className="py-3 px-2 text-sm text-gray-500 hidden md:table-cell">{new Date(invoice.invoice_date).toLocaleDateString('fr-FR')}</td>
@@ -334,8 +379,8 @@ export default function SalesInvoices() {
                       </td>
                       <td className="py-3 px-2 text-right"><div className="flex items-center justify-end gap-1">
                         <button onClick={() => viewInvoiceDetails(invoice)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg"><Eye className="w-4 h-4" /></button>
-                        <button onClick={() => openEditModal(invoice)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => openDeleteModal(invoice)} className="p-2 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => openEditModal(invoice)} className="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg" title="Code admin requis"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => openDeleteModal(invoice)} className="p-2 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg" title="Code admin requis"><Trash2 className="w-4 h-4" /></button>
                       </div></td>
                     </tr>
                   ))}
@@ -364,6 +409,30 @@ export default function SalesInvoices() {
           {closures.length === 0? <div className="text-center py-12"><CalendarCheck className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-400">Aucune clôture</p></div> : (
             <div className="overflow-x-auto"><table className="w-full"><thead><tr className="border-b border-gray-200"><th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2">Date</th><th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2 hidden sm:table-cell">Vendeur</th><th className="text-center text-xs font-medium text-gray-500 uppercase py-3 px-2">Ventes</th><th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2">Montant</th></tr></thead><tbody className="divide-y divide-gray-100">{closures.map(c => (<tr key={c.id} className="hover:bg-gray-50"><td className="py-3 px-2 text-sm text-gray-600">{new Date(c.closure_date).toLocaleDateString('fr-FR')}</td><td className="py-3 px-2 text-sm font-medium text-gray-900 hidden sm:table-cell">{c.vendeur_name}</td><td className="py-3 px-2 text-center text-sm text-gray-900">{c.total_invoices}</td><td className="py-3 px-2 text-right text-sm font-semibold text-gray-900">{Number(c.total_ttc).toLocaleString('fr-FR')} FCFA</td></tr>))}</tbody></table></div>
           )}
+        </div>
+      )}
+
+      {/* MODAL CODE SECRET POUR MODIFICATION */}
+      {showSecretModal && (
+        <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center"><ShieldAlert className="w-5 h-5 text-orange-600" /></div>
+              <div><h3 className="font-semibold">Code Admin requis</h3><p className="text-xs text-gray-500">Pour modifier les ventes</p></div>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="label">Code secret (admin)</label>
+                <input type="password" value={secretInput} onChange={e => setSecretInput(e.target.value)} className="input" placeholder="••••" autoFocus onKeyDown={e => e.key === 'Enter' && verifySecretAndProceed()} />
+              </div>
+              {secretError && <div className="text-sm text-red-600 bg-red-50 p-2 rounded-lg">{secretError}</div>}
+              <div className="flex gap-3">
+                <button onClick={() => setShowSecretModal(false)} className="btn-secondary flex-1">Annuler</button>
+                <button onClick={verifySecretAndProceed} className="btn-primary flex-1 bg-orange-600 hover:bg-orange-700">Valider</button>
+              </div>
+              <p className="text-[11px] text-gray-400 text-center">Code par défaut: admin (changeable dans Paramètres)</p>
+            </div>
+          </div>
         </div>
       )}
 
