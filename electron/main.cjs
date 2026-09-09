@@ -1,10 +1,11 @@
-const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron')
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { SCHEMA_SQL } = require('./schema.cjs')
 
 let mainWindow = null
 let db = null
+let backupInterval = null
 
 // ---- Database (PGlite on filesystem) ----
 async function initDb() {
@@ -17,11 +18,15 @@ async function initDb() {
   if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true })
 
   const dbPath = path.join(dbDir, 'erp-pgi')
+  if (!fs.existsSync(dbPath)) fs.mkdirSync(dbPath, { recursive: true })
+
   db = new PGlite(dbPath)
+  await db.waitReady // Important: attend que le disque soit prêt
 
   await db.exec(SCHEMA_SQL)
   await seedDefaults(db)
 
+  console.log('DB prête sur:', dbPath)
   return db
 }
 
@@ -64,6 +69,37 @@ async function seedDefaults(db) {
   }
 }
 
+// ---- SAUVEGARDE PERMANENTE DANS LA JOURNÉE ----
+async function checkpoint() {
+  if (!db) return
+  try {
+    await db.exec('CHECKPOINT;')
+  } catch(e) { console.log('checkpoint error', e) }
+}
+
+function backupJournalier() {
+  try {
+    const userDataPath = app.getPath('userData')
+    const dbSource = path.join(userDataPath, 'database', 'erp-pgi')
+    const backupRoot = path.join(userDataPath, 'backups')
+    if (!fs.existsSync(backupRoot)) fs.mkdirSync(backupRoot, { recursive: true })
+
+    const now = new Date()
+    const date = now.toISOString().slice(0,10)
+    const heure = now.toTimeString().slice(0,5).replace(':','h')
+    const dest = path.join(backupRoot, `backup-${date}-${heure}${Math.floor(Math.random()*100)}`)
+
+    // On force l'écriture avant de copier
+    // Note: fs.cpSync est sync pour être sûr
+    fs.cpSync(dbSource, dest, { recursive: true, force: true })
+    console.log('Backup créé:', dest)
+    return dest
+  } catch(e) {
+    console.error('Backup erreur', e)
+    return null
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -79,7 +115,7 @@ function createWindow() {
     },
   })
 
-  const isDev = !!process.env.VITE_DEV_SERVER_URL
+  const isDev =!!process.env.VITE_DEV_SERVER_URL
 
   if (isDev) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
@@ -106,29 +142,74 @@ Menu.setApplicationMenu(null)
 ipcMain.handle('db:query', async (_event, sql, params) => {
   if (!db) await initDb()
   const result = await db.query(sql, params || [])
+  // SAUVEGARDE PERMANENTE APRES CHAQUE VENTE
+  if (sql.toLowerCase().includes('insert into') || sql.toLowerCase().includes('update')) {
+    await checkpoint()
+  }
   return { rows: result.rows, affectedRows: result.affectedRows }
 })
 
 ipcMain.handle('db:exec', async (_event, sql) => {
   if (!db) await initDb()
   await db.exec(sql)
+  await checkpoint() // <- sauvegarde immédiate
   return true
 })
 
 ipcMain.handle('db:getPath', async () => {
   if (!db) await initDb()
-  return db ? path.join(app.getPath('userData'), 'database') : null
+  return path.join(app.getPath('userData'), 'database', 'erp-pgi')
+})
+
+// NOUVEAU: Boutons sauvegarde/restauration pour toi
+ipcMain.handle('db:backupNow', async () => {
+  await checkpoint()
+  const p = backupJournalier()
+  if (p) {
+    dialog.showMessageBoxSync(mainWindow, { message: `Sauvegarde réussie!\n${p}`, type: 'info' })
+  }
+  return p
+})
+
+ipcMain.handle('db:exportForUSB', async () => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Exporter pour clé USB',
+    defaultPath: `MamanStar-Backup-${new Date().toISOString().slice(0,10)}.zip`,
+    filters: [{ name: 'Dossier backup', extensions: ['*'] }]
+  })
+  if (canceled) return null
+  await checkpoint()
+  const src = path.join(app.getPath('userData'), 'database', 'erp-pgi')
+  // On copie le dossier database complet
+  const destFolder = filePath + '-dossier'
+  fs.cpSync(src, destFolder, { recursive: true, force: true })
+  return destFolder
 })
 
 app.whenReady().then(async () => {
   await initDb()
   createWindow()
+
+  // Sauvegarde auto toutes les 30 minutes dans la journée
+  backupInterval = setInterval(async () => {
+    await checkpoint()
+    backupJournalier()
+  }, 30 * 60 * 1000)
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (process.platform!== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', async (e) => {
+  // Empêche la fermeture le temps de sauvegarder
+  e.preventDefault()
+  if (backupInterval) clearInterval(backupInterval)
+  await checkpoint()
+  backupJournalier()
+  app.exit(0)
 })
 
 app.on('activate', () => {
