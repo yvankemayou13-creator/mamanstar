@@ -10,7 +10,12 @@ contextBridge.exposeInMainWorld('electronDB', {
   exec: (sql) => ipcRenderer.invoke('db:exec', sql),
   getPath: () => ipcRenderer.invoke('db:getPath'),
   
-  // NOUVEAU: sauvegarde permanente dans la journée
+  // Sauvegarde permanente dans la journée
   backupNow: () => ipcRenderer.invoke('db:backupNow'),
   exportForUSB: () => ipcRenderer.invoke('db:exportForUSB'),
+
+  // NOUVEAU: Code secret admin pour modifier les ventes
+  verifySecret: (key, value) => ipcRenderer.invoke('secret:verify', key, value),
+  getSecrets: () => ipcRenderer.invoke('secret:getAll'),
+  updateSecret: (key, value) => ipcRenderer.invoke('secret:update', key, value),
 })
