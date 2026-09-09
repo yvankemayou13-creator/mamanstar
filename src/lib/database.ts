@@ -29,8 +29,8 @@ CREATE TABLE IF NOT EXISTS products (
   barcode TEXT,
   purchase_price REAL NOT NULL DEFAULT 0,
   sale_price REAL NOT NULL DEFAULT 0,
-  quantity_in_stock INTEGER NOT NULL DEFAULT 0,
-  alert_threshold INTEGER NOT NULL DEFAULT 10,
+  quantity_in_stock REAL NOT NULL DEFAULT 0,
+  alert_threshold REAL NOT NULL DEFAULT 10,
   category TEXT DEFAULT 'Général',
   created_at TEXT NOT NULL DEFAULT (now()::text),
   updated_at TEXT NOT NULL DEFAULT (now()::text)
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   id TEXT PRIMARY KEY,
   product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   type TEXT NOT NULL,
-  quantity INTEGER NOT NULL,
+  quantity REAL NOT NULL,
   reason TEXT DEFAULT '',
   user_id TEXT,
   created_at TEXT NOT NULL DEFAULT (now()::text)
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS invoice_lines (
   invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
   product_id TEXT,
   designation TEXT NOT NULL,
-  quantity INTEGER NOT NULL DEFAULT 1,
+  quantity REAL NOT NULL DEFAULT 1,
   unit_price REAL NOT NULL DEFAULT 0,
   line_total REAL NOT NULL DEFAULT 0
 );
@@ -162,9 +162,17 @@ CREATE TABLE IF NOT EXISTS secret_codes (
 );
 `
 
+// ---------- Migration pour demi-casier ----------
+const MIGRATION_SQL = `
+-- Migration pour autoriser 0.5 = demi-casier sur les anciennes bases
+ALTER TABLE products ALTER COLUMN quantity_in_stock TYPE REAL USING quantity_in_stock::REAL;
+ALTER TABLE products ALTER COLUMN alert_threshold TYPE REAL USING alert_threshold::REAL;
+ALTER TABLE stock_movements ALTER COLUMN quantity TYPE REAL USING quantity::REAL;
+ALTER TABLE invoice_lines ALTER COLUMN quantity TYPE REAL USING quantity::REAL;
+`
+
 // ---------- Client implementations ----------
 
-// Electron IPC proxy — database lives on filesystem in main process
 class ElectronDbClient implements DbClient {
   async query(sql: string, params?: unknown[]): Promise<DbResult> {
     return window.electronDB!.query(sql, params)
@@ -174,55 +182,42 @@ class ElectronDbClient implements DbClient {
   }
 }
 
-// Browser PGlite — database lives in IndexedDB (for future web version)
 class BrowserDbClient implements DbClient {
   private pglite: PGlite
-
-  constructor(pglite: PGlite) {
-    this.pglite = pglite
-  }
-
+  constructor(pglite: PGlite) { this.pglite = pglite }
   async query(sql: string, params?: unknown[]): Promise<DbResult> {
     const result = await this.pglite.query(sql, params || [])
     return { rows: result.rows, affectedRows: result.affectedRows }
   }
-
-  async exec(sql: string): Promise<void> {
-    await this.pglite.exec(sql)
-  }
+  async exec(sql: string): Promise<void> { await this.pglite.exec(sql) }
 }
-
-// ---------- Singleton ----------
 
 let dbInstance: DbClient | null = null
 let initPromise: Promise<DbClient> | null = null
 
 function isElectron(): boolean {
-  return typeof window !== 'undefined' && !!window.electronDB
+  return typeof window!== 'undefined' &&!!window.electronDB
 }
 
 export async function getDb(): Promise<DbClient> {
   if (dbInstance) return dbInstance
   if (initPromise) return initPromise
-
   initPromise = (async () => {
     let client: DbClient
-
     if (isElectron()) {
-      // Electron: database is on filesystem, main process already initialized schema + seeds
       client = new ElectronDbClient()
+      // Tente la migration pour les anciennes installations
+      try { await client.exec(MIGRATION_SQL) } catch (e) { console.log('Migration demi-casier déjà faite ou ignorée', e) }
     } else {
-      // Browser: PGlite in IndexedDB
       const pglite = new PGlite({ fs: new IdbFs('erp-pgi'), dataDir: 'idb://erp-pgi' })
       await pglite.exec(SCHEMA_SQL)
       client = new BrowserDbClient(pglite)
+      try { await client.exec(MIGRATION_SQL) } catch {}
       await seedDefaults(client)
     }
-
     dbInstance = client
     return client
   })()
-
   return initPromise
 }
 
@@ -235,7 +230,6 @@ async function seedDefaults(db: DbClient): Promise<void> {
       [crypto.randomUUID(), 'Maman Star'],
     )
   }
-
   const { rows: pRows } = await db.query('SELECT COUNT(*) as cnt FROM profiles')
   if (Number((pRows[0] as { cnt: string | number }).cnt) === 0) {
     const adminId = crypto.randomUUID()
@@ -245,30 +239,17 @@ async function seedDefaults(db: DbClient): Promise<void> {
       [adminId, 'admin@mamanstar.local', 'admin', 'Administrateur', 'admin', 'admin123'],
     )
   }
-
   const { rows: sRows } = await db.query('SELECT COUNT(*) as cnt FROM secret_codes')
   if (Number((sRows[0] as { cnt: string | number }).cnt) === 0) {
     const defaults: Record<string, string> = {
-      reset_password: 'admin',
-      stock_access: 'admin',
-      users_access: 'admin',
-      sales_reset: 'admin',
-      accounting_edit: 'admin',
-      admin_access: 'admin',
+      reset_password: 'admin', stock_access: 'admin', users_access: 'admin',
+      sales_reset: 'admin', accounting_edit: 'admin', admin_access: 'admin',
     }
     for (const [key, value] of Object.entries(defaults)) {
-      await db.query(
-        `INSERT INTO secret_codes (key, value, updated_at) VALUES ($1, $2, now()::text)`,
-        [key, value],
-      )
+      await db.query(`INSERT INTO secret_codes (key, value, updated_at) VALUES ($1, $2, now()::text)`, [key, value])
     }
   }
 }
 
-export function genId(): string {
-  return crypto.randomUUID()
-}
-
-export function now(): string {
-  return new Date().toISOString()
-}
+export function genId(): string { return crypto.randomUUID() }
+export function now(): string { return new Date().toISOString() }
