@@ -24,7 +24,7 @@ const secretCodeLabels: Record<string, string> = {
 export default function Settings() {
   const { profile } = useAuth()
   const [settings, setSettings] = useState<CompanySettings | null>(null)
-  const [appSettings, setAppSettings] = useState<Record<string, string>>({})
+  const [appSettings, setAppSettings] = useState<Record<string, string>>({} as Record<string, string>)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingApp, setSavingApp] = useState(false)
@@ -36,12 +36,12 @@ export default function Settings() {
   const [activeSection, setActiveSection] = useState<'company' | 'app' | 'secrets' | 'updates'>('company')
 
   const [secretCodes, setSecretCodes] = useState<{ key: string; value: string }[]>([])
-  const [secretEdits, setSecretEdits] = useState<Record<string, string>>({})
+  const [secretEdits, setSecretEdits] = useState<Record<string, string>>({} as Record<string, string>)
   const [secretAdminPw, setSecretAdminPw] = useState('')
   const [secretSaving, setSecretSaving] = useState(false)
   const [secretSuccess, setSecretSuccess] = useState(false)
   const [secretError, setSecretError] = useState<string | null>(null)
-  const [showValues, setShowValues] = useState<Record<string, boolean>>({})
+  const [showValues, setShowValues] = useState<Record<string, boolean>>({} as Record<string, boolean>)
 
   // NOUVEAU: Accès sécurisé aux paramètres
   const [hasAccess, setHasAccess] = useState(false)
@@ -177,7 +177,7 @@ export default function Settings() {
     }
     setSecretSuccess(true)
     setSecretAdminPw('')
-    setShowValues({})
+    setShowValues({} as Record<string, boolean>)
     load()
     setSecretSaving(false)
   }
