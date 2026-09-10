@@ -43,7 +43,6 @@ export default function Settings() {
   const [secretError, setSecretError] = useState<string | null>(null)
   const [showValues, setShowValues] = useState<Record<string, boolean>>({} as Record<string, boolean>)
 
-  // NOUVEAU: Accès sécurisé aux paramètres
   const [hasAccess, setHasAccess] = useState(false)
   const [accessPassword, setAccessPassword] = useState('')
   const [accessError, setAccessError] = useState('')
@@ -56,7 +55,7 @@ export default function Settings() {
       getAllSecretCodes(),
     ])
     setSettings(settingsRes.data as CompanySettings | null)
-    setAppSettings(appRes.data || ({} as Record<string, string>))
+    setAppSettings((appRes.data || {}) as Record<string, string>)
     const codes = secretRes.data || []
     setSecretCodes(codes)
     const editsMap: Record<string, string> = {} as Record<string, string>
@@ -66,7 +65,6 @@ export default function Settings() {
   }, [])
 
   useEffect(() => {
-    // On charge mais on ne déverrouille pas
     if (profile?.role === 'admin' && hasAccess) {
       load()
     } else if (profile?.role === 'admin' &&!hasAccess) {
@@ -90,7 +88,6 @@ export default function Settings() {
     )
   }
 
-  // ECRAN DE VERROUILLAGE ADMIN
   if (!hasAccess) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-4">
