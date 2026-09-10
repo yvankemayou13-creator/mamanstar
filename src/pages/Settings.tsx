@@ -56,10 +56,10 @@ export default function Settings() {
       getAllSecretCodes(),
     ])
     setSettings(settingsRes.data as CompanySettings | null)
-    setAppSettings(appRes.data || {})
+    setAppSettings(appRes.data || ({} as Record<string, string>))
     const codes = secretRes.data || []
     setSecretCodes(codes)
-    const editsMap: Record<string, string> = {}
+    const editsMap: Record<string, string> = {} as Record<string, string>
     for (const c of codes) editsMap[c.key] = c.value
     setSecretEdits(editsMap)
     setLoading(false)
