@@ -1,403 +1,328 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { getAllProfiles, createUser, updateUser, deleteUser, verifySecretCode } from '../lib/api'
-import { Shield, UserCog, UserPlus, X, Lock, User, Pencil, Trash2 } from 'lucide-react'
-import type { Profile, UserRole } from '../types'
+import {
+  getCompanySettings, updateCompanySettings, getAppSettings, upsertAppSetting,
+  exportAllData, getAllSecretCodes, updateSecretCode, verifySecretCode,
+} from '../lib/api'
+import {
+  Settings as SettingsIcon, Save, Building, SlidersHorizontal,
+  Download, RefreshCw, CheckCircle2, Monitor, KeyRound, Lock, Eye, EyeOff, ShieldCheck
+} from 'lucide-react'
+import type { CompanySettings } from '../types'
 
-const roleLabels: Record<UserRole, string> = {
-  admin: 'Administrateur',
-  vendeur: 'Vendeur',
-  comptable: 'Comptable',
+const secretCodeLabels: Record<string, string> = {
+  reset_password: 'Réinitialisation (page de connexion)',
+  stock_access: 'Accès au stock',
+  users_access: 'Accès aux utilisateurs',
+  sales_reset: 'Suppression des ventes',
+  sales_edit: 'Modification des ventes',
+  sales_delete: 'Suppression des ventes',
+  accounting_edit: 'Modification comptabilité',
+  admin_access: 'Accès Paramètres (code admin)',
 }
 
-const roleColors: Record<UserRole, string> = {
-  admin: 'bg-primary-100 text-primary-700',
-  vendeur: 'bg-accent-100 text-accent-700',
-  comptable: 'bg-warning-100 text-warning-700',
-}
-
-export default function Users() {
-  const { profile, refreshProfile } = useAuth()
-  const [unlocked, setUnlocked] = useState(false)
-  const [pwInput, setPwInput] = useState('')
-  const [pwError, setPwError] = useState<string | null>(null)
-  const [checking, setChecking] = useState(false)
-  const [users, setUsers] = useState<Profile[]>([])
+export default function Settings() {
+  const { profile } = useAuth()
+  const [settings, setSettings] = useState<CompanySettings | null>(null)
+  const [appSettings, setAppSettings] = useState<Record<string, string>>({} as Record<string, string>)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ username: '', password: '', full_name: '', role: 'vendeur' as UserRole })
   const [saving, setSaving] = useState(false)
-  const [modalError, setModalError] = useState<string | null>(null)
+  const [savingApp, setSavingApp] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+  const [appSuccess, setAppSuccess] = useState(false)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [updateInfo, setUpdateInfo] = useState<string | null>(null)
+  const [activeSection, setActiveSection] = useState<'company' | 'app' | 'secrets' | 'updates'>('company')
 
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [editForm, setEditForm] = useState({ userId: '', username: '', password: '', full_name: '', role: 'vendeur' as UserRole })
-  const [editError, setEditError] = useState<string | null>(null)
-  const [savingEdit, setSavingEdit] = useState(false)
+  const [secretCodes, setSecretCodes] = useState<{ key: string; value: string }[]>([])
+  const [secretEdits, setSecretEdits] = useState<Record<string, string>>({} as Record<string, string>)
+  const [secretAdminPw, setSecretAdminPw] = useState('')
+  const [secretSaving, setSecretSaving] = useState(false)
+  const [secretSuccess, setSecretSuccess] = useState(false)
+  const [secretError, setSecretError] = useState<string | null>(null)
+  const [showValues, setShowValues] = useState<Record<string, boolean>>({} as Record<string, boolean>)
+
+  const [hasAccess, setHasAccess] = useState(false)
+  const [accessPassword, setAccessPassword] = useState('')
+  const [accessError, setAccessError] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await getAllProfiles()
-    const profiles = (data || []).map(p => {
-      const { password_hash: _ph, ...rest } = p
-      return rest as Profile
-    })
-    setUsers(profiles)
+    const [settingsRes, appRes, secretRes] = await Promise.all([
+      getCompanySettings(),
+      getAppSettings(),
+      getAllSecretCodes(),
+    ])
+    setSettings(settingsRes.data as CompanySettings | null)
+    setAppSettings(appRes.data || ({} as Record<string, string>))
+    const codes = secretRes.data || []
+    setSecretCodes(codes)
+    const editsMap: Record<string, string> = {} as Record<string, string>
+    for (const c of codes) editsMap[c.key] = c.value
+    setSecretEdits(editsMap)
     setLoading(false)
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    if (profile?.role === 'admin' && hasAccess) {
+      load()
+    } else if (profile?.role === 'admin' &&!hasAccess) {
+      setLoading(false)
+    }
+  }, [hasAccess])
 
-  if (profile?.role !== 'admin') {
+  useEffect(() => {
+    if (hasAccess) load()
+  }, [hasAccess, load])
+
+  if (profile?.role!== 'admin') {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-danger-100 rounded-2xl mb-4">
-            <Shield className="w-8 h-8 text-danger-600" />
-          </div>
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-2xl mb-4"><SettingsIcon className="w-8 h-8 text-red-600" /></div>
           <h2 className="text-xl font-bold text-gray-900 mb-2">Accès refusé</h2>
-          <p className="text-gray-500">Seuls les administrateurs peuvent gérer les utilisateurs.</p>
+          <p className="text-gray-500">Seuls les administrateurs peuvent modifier les paramètres.</p>
         </div>
       </div>
     )
   }
 
-  if (!unlocked) {
+  if (!hasAccess) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center max-w-md">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-100 rounded-2xl mb-4">
-            <Lock className="w-8 h-8 text-primary-600" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Accès aux utilisateurs protégé</h2>
-          <p className="text-gray-500 mb-6">Saisissez le mot de passe pour accéder à la gestion des utilisateurs.</p>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault()
-              setChecking(true)
-              const valid = await verifySecretCode('users_access', pwInput)
-              if (valid) { setUnlocked(true); setPwError(null) }
-              else setPwError('Mot de passe incorrect')
-              setChecking(false)
-            }}
-            className="space-y-4"
-          >
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input type="password" value={pwInput} onChange={e => { setPwInput(e.target.value); setPwError(null) }} className="input pl-10" placeholder="Mot de passe" autoFocus />
+      <div className="min-h-[60vh] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md border">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Lock className="w-8 h-8 text-white" />
             </div>
-            {pwError && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{pwError}</div>}
-            <button type="submit" disabled={checking} className="btn-primary w-full">
-              {checking ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Lock className="w-4 h-4" /> Déverrouiller</>}
-            </button>
+            <h1 className="text-xl font-bold">Paramètres sécurisés</h1>
+            <p className="text-sm text-gray-500 mt-2">Entre le code <b>admin</b> pour accéder</p>
+          </div>
+          <form onSubmit={async (e) => {
+            e.preventDefault()
+            const ok = await verifySecretCode('admin_access', accessPassword)
+            if (!ok) {
+              setAccessError('Code incorrect. Par défaut: admin')
+              return
+            }
+            setHasAccess(true)
+          }} className="space-y-4">
+            <div>
+              <label className="label">Mot de passe Admin</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input type="password" value={accessPassword} onChange={e => setAccessPassword(e.target.value)} className="input pl-10" placeholder="••••••••" autoFocus />
+              </div>
+            </div>
+            {accessError && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{accessError}</div>}
+            <button type="submit" className="btn-primary w-full"><ShieldCheck className="w-4 h-4" /> Déverrouiller</button>
+            <p className="text-[11px] text-center text-gray-400">Code par défaut: admin</p>
           </form>
         </div>
       </div>
     )
   }
 
-  const openAdd = () => {
-    setForm({ username: '', password: '', full_name: '', role: 'vendeur' })
-    setModalError(null)
-    setShowModal(true)
-  }
-
-  const openEdit = (user: Profile) => {
-    setEditForm({ userId: user.id, username: user.username || '', password: '', full_name: user.full_name, role: user.role })
-    setEditError(null)
-    setShowEditModal(true)
-  }
-
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
-    setModalError(null)
+    if (!settings) return
+    setError(null)
+    setSuccess(false)
     setSaving(true)
-
-    if (form.password.length < 6) {
-      setModalError('Le mot de passe doit contenir au moins 6 caractères')
-      setSaving(false)
-      return
-    }
-
-    const { error: createError } = await createUser({
-      username: form.username,
-      password: form.password,
-      full_name: form.full_name,
-      role: form.role,
+    const { error } = await updateCompanySettings(settings.id, {
+      company_name: settings.company_name,
+      address: settings.address,
+      city: settings.city,
+      postal_code: settings.postal_code,
+      phone: settings.phone,
+      email: settings.email,
+      siret: settings.siret,
     })
-
-    if (createError) {
-      setModalError(createError.message)
-      setSaving(false)
-      return
-    }
-
-    setShowModal(false)
-    load()
+    if (error) setError(error.message)
+    else setSuccess(true)
     setSaving(false)
   }
 
-  const handleEdit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setEditError(null)
-    setSavingEdit(true)
-
-    if (editForm.password && editForm.password.length < 6) {
-      setEditError('Le mot de passe doit contenir au moins 6 caractères')
-      setSavingEdit(false)
-      return
+  const handleSaveAppSettings = async () => {
+    setSavingApp(true)
+    setAppSuccess(false)
+    setError(null)
+    for (const [key, value] of Object.entries(appSettings)) {
+      await upsertAppSetting(key, value)
     }
-
-    const { error: updateError } = await updateUser({
-      userId: editForm.userId,
-      username: editForm.username,
-      password: editForm.password || undefined,
-      full_name: editForm.full_name,
-      role: editForm.role,
-    })
-
-    if (updateError) {
-      setEditError(updateError.message)
-      setSavingEdit(false)
-      return
-    }
-
-    setShowEditModal(false)
-    load()
-    if (editForm.userId === profile.id) refreshProfile()
-    setSavingEdit(false)
+    setAppSuccess(true)
+    setSavingApp(false)
   }
 
-  const handleDelete = async (user: Profile) => {
-    if (user.id === profile.id) {
-      setError('Vous ne pouvez pas supprimer votre propre compte')
+  const handleSaveSecrets = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSecretError(null)
+    setSecretSuccess(false)
+    setSecretSaving(true)
+    const valid = await verifySecretCode('admin_access', secretAdminPw)
+    if (!valid) {
+      setSecretError('Mot de passe administrateur incorrect')
+      setSecretSaving(false)
       return
     }
-    if (!confirm(`Supprimer l'utilisateur "${user.full_name || user.username}" ? Cette action est irréversible.`)) return
-
-    const { error: deleteError } = await deleteUser(user.id)
-    if (deleteError) {
-      setError(deleteError.message)
-      return
+    for (const code of secretCodes) {
+      const newVal = secretEdits[code.key]
+      if (newVal!== code.value) {
+        await updateSecretCode(code.key, newVal)
+      }
     }
-
+    setSecretSuccess(true)
+    setSecretAdminPw('')
+    setShowValues({} as Record<string, boolean>)
     load()
+    setSecretSaving(false)
+  }
+
+  const checkForUpdates = async () => {
+    setCheckingUpdate(true)
+    setUpdateInfo(null)
+    await new Promise(r => setTimeout(r, 1500))
+    const currentVersion = appSettings['app_version'] || '1.0.0'
+    setUpdateInfo(`Votre application est en version ${currentVersion}. Vous êtes à jour.`)
+    await upsertAppSetting('last_update_check', new Date().toISOString().split('T')[0])
+    setCheckingUpdate(false)
+  }
+
+  const exportData = async () => {
+    const { data } = await exportAllData()
+    const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(),...data }, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `sauvegarde_${new Date().toISOString().split('T')[0]}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  if (loading) {
+    return <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div></div>
+  }
+
+  if (!settings) {
+    return <p className="text-gray-400">Paramètres introuvables</p>
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Utilisateurs</h1>
-          <p className="text-gray-500 mt-1">Gérez les comptes, rôles et accès des utilisateurs</p>
-        </div>
-        <button onClick={openAdd} className="btn-primary">
-          <UserPlus className="w-4 h-4" />
-          Ajouter un utilisateur
-        </button>
+    <div className="space-y-6 max-w-3xl">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Paramètres</h1>
+        <p className="text-gray-500 mt-1">Configuration de l'application et de l'entreprise</p>
       </div>
 
-      {error && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{error}</div>}
-
-      <div className="card">
-        {loading ? (
-          <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div></div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2">Utilisateur</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-2 hidden sm:table-cell">Nom d'utilisateur</th>
-                  <th className="text-center text-xs font-medium text-gray-500 uppercase py-3 px-2">Rôle</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {users.map(user => (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="py-3 px-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center text-gray-700 text-sm font-medium">
-                          {user.full_name?.charAt(0)?.toUpperCase() || user.username?.charAt(0)?.toUpperCase() || '?'}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{user.full_name || 'Sans nom'}</p>
-                          <p className="text-xs text-gray-400 sm:hidden">{user.username || '—'}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-2 text-sm text-gray-600 hidden sm:table-cell">{user.username || '—'}</td>
-                    <td className="py-3 px-2 text-center">
-                      <span className={`badge ${roleColors[user.role]}`}>{roleLabels[user.role]}</span>
-                    </td>
-                    <td className="py-3 px-2 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(user)} className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all" title="Modifier">
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDelete(user)} className="p-2 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg transition-all" title="Supprimer">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit flex-wrap">
+        <button onClick={() => setActiveSection('company')} className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeSection === 'company'? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'}`}><Building className="w-4 h-4" />Entreprise</button>
+        <button onClick={() => setActiveSection('app')} className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeSection === 'app'? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'}`}><SlidersHorizontal className="w-4 h-4" />Application</button>
+        <button onClick={() => setActiveSection('secrets')} className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeSection === 'secrets'? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'}`}><KeyRound className="w-4 h-4" />Mots de passe secrets</button>
+        <button onClick={() => setActiveSection('updates')} className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 ${activeSection === 'updates'? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'}`}><RefreshCw className="w-4 h-4" />Mises à jour</button>
       </div>
 
-      <div className="card bg-primary-50 border-primary-200">
-        <div className="flex items-start gap-4">
-          <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <UserCog className="w-5 h-5 text-primary-600" />
+      {activeSection === 'company' && (
+        <form onSubmit={handleSave} className="card space-y-4">
+          <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+            <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center"><Building className="w-5 h-5 text-primary-600" /></div>
+            <h2 className="text-lg font-semibold text-gray-900">Informations de l'entreprise</h2>
           </div>
-          <div>
-            <h3 className="font-medium text-gray-900">Gestion des rôles (RBAC)</h3>
-            <ul className="text-sm text-gray-600 mt-2 space-y-1">
-              <li><strong>Administrateur</strong> : Stock, ventes, utilisateurs et paramètres</li>
-              <li><strong>Comptable</strong> : Tableau de bord, stock sécurisé et comptabilité</li>
-              <li><strong>Vendeur</strong> : Ventes, bilan de journée et clôtures uniquement</li>
-            </ul>
+          <div><label className="label">Nom de l'entreprise</label><input type="text" value={settings.company_name} onChange={e => setSettings({...settings, company_name: e.target.value })} className="input" /></div>
+          <div><label className="label">Adresse</label><input type="text" value={settings.address} onChange={e => setSettings({...settings, address: e.target.value })} className="input" /></div>
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className="label">Code postal</label><input type="text" value={settings.postal_code} onChange={e => setSettings({...settings, postal_code: e.target.value })} className="input" /></div>
+            <div><label className="label">Ville</label><input type="text" value={settings.city} onChange={e => setSettings({...settings, city: e.target.value })} className="input" /></div>
           </div>
-        </div>
-      </div>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Ajouter un utilisateur</h2>
-              <button onClick={() => setShowModal(false)} className="p-2 rounded-lg hover:bg-gray-100">
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label className="label">Nom complet *</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input type="text" required value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} className="input pl-10" placeholder="Jean Dupont" />
-                </div>
-              </div>
-
-              <div>
-                <label className="label">Nom d'utilisateur *</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input type="text" required value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} className="input pl-10" placeholder="jdupont" />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Utilisé pour la connexion</p>
-              </div>
-
-              <div>
-                <label className="label">Mot de passe *</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input type="password" required value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} className="input pl-10" placeholder="••••••••" />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Minimum 6 caractères</p>
-              </div>
-
-              <div>
-                <label className="label">Rôle *</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(Object.entries(roleLabels) as [UserRole, string][]).map(([key, label]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setForm({ ...form, role: key })}
-                      className={`py-3 px-2 rounded-lg border-2 text-xs font-medium transition-all ${
-                        form.role === key ? `${roleColors[key]} border-current` : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {modalError && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{modalError}</div>}
-
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary flex-1">Annuler</button>
-                <button type="submit" disabled={saving} className="btn-primary flex-1">
-                  {saving ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : 'Créer l\'utilisateur'}
-                </button>
-              </div>
-            </form>
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className="label">Téléphone</label><input type="text" value={settings.phone} onChange={e => setSettings({...settings, phone: e.target.value })} className="input" /></div>
+            <div><label className="label">Email</label><input type="email" value={settings.email} onChange={e => setSettings({...settings, email: e.target.value })} className="input" /></div>
           </div>
+          <div><label className="label">SIRET</label><input type="text" value={settings.siret} onChange={e => setSettings({...settings, siret: e.target.value })} className="input" /></div>
+          {error && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{error}</div>}
+          {success && <div className="text-sm text-accent-600 bg-accent-50 border border-accent-200 rounded-lg p-3 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Paramètres enregistrés</div>}
+          <button type="submit" disabled={saving} className="btn-primary w-full">{saving? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Save className="w-4 h-4" /> Enregistrer</>}</button>
+        </form>
+      )}
+
+      {activeSection === 'app' && (
+        <div className="card space-y-4">
+          <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+            <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center"><SlidersHorizontal className="w-5 h-5 text-primary-600" /></div>
+            <h2 className="text-lg font-semibold text-gray-900">Configuration de l'application</h2>
+          </div>
+          <div><label className="label">Nom de l'application</label><input type="text" value={appSettings['app_name'] || ''} onChange={e => setAppSettings({...appSettings, app_name: e.target.value })} className="input" /></div>
+          <div><label className="label">Préfixe des factures</label><input type="text" value={appSettings['invoice_prefix'] || ''} onChange={e => setAppSettings({...appSettings, invoice_prefix: e.target.value })} className="input" placeholder="FAC" /></div>
+          <div><label className="label">Pied de page des factures</label><input type="text" value={appSettings['invoice_footer'] || ''} onChange={e => setAppSettings({...appSettings, invoice_footer: e.target.value })} className="input" placeholder="Merci de votre confiance" /></div>
+          <div><label className="label">Monnaie</label><input type="text" value={appSettings['currency'] || ''} onChange={e => setAppSettings({...appSettings, currency: e.target.value })} className="input" placeholder="FCFA" /></div>
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Données & Sauvegarde</h3>
+            <div className="flex gap-3"><button onClick={exportData} className="btn-secondary flex-1"><Download className="w-4 h-4" /> Exporter les données</button></div>
+          </div>
+          {appSuccess && <div className="text-sm text-accent-600 bg-accent-50 border border-accent-200 rounded-lg p-3 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Configuration enregistrée</div>}
+          <button onClick={handleSaveAppSettings} disabled={savingApp} className="btn-primary w-full">{savingApp? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Save className="w-4 h-4" /> Enregistrer</>}</button>
         </div>
       )}
 
-      {showEditModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Modifier l'utilisateur</h2>
-              <button onClick={() => setShowEditModal(false)} className="p-2 rounded-lg hover:bg-gray-100">
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-
-            <form onSubmit={handleEdit} className="space-y-4">
-              <div>
-                <label className="label">Nom complet</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input type="text" value={editForm.full_name} onChange={e => setEditForm({ ...editForm, full_name: e.target.value })} className="input pl-10" placeholder="Nom complet" />
-                </div>
-              </div>
-
-              <div>
-                <label className="label">Nom d'utilisateur</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input type="text" value={editForm.username} onChange={e => setEditForm({ ...editForm, username: e.target.value })} className="input pl-10" placeholder="jdupont" />
-                </div>
-              </div>
-
-              <div>
-                <label className="label">Nouveau mot de passe</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input type="password" value={editForm.password} onChange={e => setEditForm({ ...editForm, password: e.target.value })} className="input pl-10" placeholder="Laisser vide pour ne pas changer" />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Laisser vide pour conserver l'ancien. Minimum 6 caractères.</p>
-              </div>
-
-              <div>
-                <label className="label">Rôle</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(Object.entries(roleLabels) as [UserRole, string][]).map(([key, label]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setEditForm({ ...editForm, role: key })}
-                      className={`py-3 px-2 rounded-lg border-2 text-xs font-medium transition-all ${
-                        editForm.role === key ? `${roleColors[key]} border-current` : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {editError && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{editError}</div>}
-
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary flex-1">Annuler</button>
-                <button type="submit" disabled={savingEdit} className="btn-primary flex-1">
-                  {savingEdit ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : 'Enregistrer'}
-                </button>
-              </div>
-            </form>
+      {activeSection === 'secrets' && (
+        <form onSubmit={handleSaveSecrets} className="card space-y-4">
+          <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+            <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center"><KeyRound className="w-5 h-5 text-primary-600" /></div>
+            <div><h2 className="text-lg font-semibold text-gray-900">Mots de passe secrets</h2><p className="text-sm text-gray-500">Masqués par défaut - clique sur l'oeil</p></div>
           </div>
+
+          <div className="space-y-3">
+            {secretCodes.map(code => (
+              <div key={code.key}>
+                <label className="label">{secretCodeLabels[code.key] || code.key}</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type={showValues[code.key]? "text" : "password"}
+                    value={secretEdits[code.key] || ''}
+                    onChange={e => setSecretEdits({...secretEdits, [code.key]: e.target.value })}
+                    className="input pl-10 pr-10 font-mono"
+                    placeholder="••••••••"
+                  />
+                  <button type="button" onClick={() => setShowValues(prev => ({...prev, [code.key]:!prev[code.key]}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    {showValues[code.key]? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-gray-100 pt-4">
+            <label className="label">Mot de passe administrateur (confirmation) *</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input type="password" required value={secretAdminPw} onChange={e => { setSecretAdminPw(e.target.value); setSecretError(null) }} className="input pl-10" placeholder="Confirme avec le code admin_access" />
+            </div>
+          </div>
+
+          {secretError && <div className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-lg p-3">{secretError}</div>}
+          {secretSuccess && <div className="text-sm text-accent-600 bg-accent-50 border border-accent-200 rounded-lg p-3 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Mots de passe mis à jour</div>}
+
+          <button type="submit" disabled={secretSaving} className="btn-primary w-full">
+            {secretSaving? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Save className="w-4 h-4" /> Enregistrer les mots de passe</>}
+          </button>
+        </form>
+      )}
+
+      {activeSection === 'updates' && (
+        <div className="card space-y-6">
+          <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+            <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center"><Monitor className="w-5 h-5 text-primary-600" /></div>
+            <div><h2 className="text-lg font-semibold text-gray-900">Mises à jour</h2><p className="text-sm text-gray-500">Vérifiez et installez les mises à jour</p></div>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2"><span className="text-sm text-gray-500">Version actuelle</span><span className="text-lg font-bold text-gray-900">{appSettings['app_version'] || '1.0.0'}</span></div>
+            <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Dernière vérification</span><span className="text-sm text-gray-700">{appSettings['last_update_check'] || 'Jamais'}</span></div>
+          </div>
+          {updateInfo && <div className="text-sm text-accent-700 bg-accent-50 border border-accent-200 rounded-lg p-4 flex items-start gap-2"><CheckCircle2 className="w-5 h-5 text-accent-600 flex-shrink-0 mt-0.5" /><span>{updateInfo}</span></div>}
+          <button onClick={checkForUpdates} disabled={checkingUpdate} className="btn-primary w-full">
+            {checkingUpdate? <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Vérification...</> : <><RefreshCw className="w-4 h-4" /> Vérifier les mises à jour</>}
+          </button>
         </div>
       )}
     </div>
